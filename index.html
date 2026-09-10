@@ -1,0 +1,115 @@
+<meta charset="utf-8" />
+<title>메모</title>
+<!-- 메모 파일은 HTML 이다. 파일에 코드가 심겨 있어도 실행되지 않게 인라인 스크립트·이벤트 핸들러·외부 주소를 막는다 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src file: data:; base-uri 'none'; form-action 'none'" />
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; } /* 아래 display:flex 규칙에 눌리지 않게 */
+  html, body { height: 100%; }
+  :root { --bg: #fdf07a; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    font: 13px/1.6 "Malgun Gothic", "맑은 고딕", sans-serif;
+    color: #3a3320;
+    overflow: hidden;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #hd { display: flex; align-items: center; gap: 1px; padding: 3px 3px 2px 0; flex: none; -webkit-app-region: drag; }
+
+  #title {
+    flex: 0 1 auto;
+    min-width: 34px;
+    -webkit-app-region: no-drag;
+    user-select: text;
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    outline: 0;
+    padding: 3px 6px 3px 10px;
+    border-radius: 3px;
+  }
+  #title:focus { background: rgba(255, 255, 255, .7); }
+  #title:empty::before { content: '제목'; opacity: .45; }
+  #sp { flex: 1; align-self: stretch; } /* 창을 끄는 빈 자리 */
+  #hd button {
+    -webkit-app-region: no-drag;
+    width: 22px; height: 21px;
+    border: 0; background: transparent; border-radius: 4px;
+    font-size: 12px; line-height: 1; cursor: pointer; color: #554c22;
+  }
+  #hd button:hover { background: rgba(0, 0, 0, .1); }
+  #hd button.on { background: rgba(0, 0, 0, .17); }
+
+  #wrap { position: relative; flex: 1; min-height: 0; }
+
+  #ed {
+    height: 100%;
+    overflow: auto;
+    padding: 3px 11px 11px;
+    outline: 0;
+    user-select: text;
+    word-break: break-word;
+  }
+  /* 세로 스크롤바를 감춘다. 휠·키보드 스크롤은 그대로 된다. */
+  #ed { scrollbar-width: none; }
+  #ed::-webkit-scrollbar { width: 0; height: 0; }
+  #ed:empty::before { content: '여기에 적으면 바로 저장됩니다.'; opacity: .4; }
+  #ed a { color: #1552b8; text-decoration: underline; cursor: pointer; word-break: break-all; }
+  #ed img { cursor: move; max-width: 100%; vertical-align: bottom; }
+  #ed img.sel { outline: 2px solid #4c8bf5; }
+
+  /* 사진 조절 */
+  #grip {
+    position: absolute; width: 14px; height: 14px;
+    background: #4c8bf5; border: 2px solid #fff; border-radius: 3px;
+    cursor: nwse-resize; z-index: 5;
+  }
+  #tools {
+    position: absolute; z-index: 5; display: flex; gap: 4px;
+    background: #333; padding: 4px; border-radius: 5px;
+  }
+  #tools button { border: 0; background: #555; color: #fff; font-size: 12px; padding: 3px 7px; border-radius: 3px; cursor: pointer; }
+  #tools button:hover { background: #4c8bf5; }
+
+  /* 메모 목록 */
+  #panel { position: absolute; inset: 0; background: rgba(255, 255, 255, .93); display: flex; flex-direction: column; z-index: 10; }
+  #panel > button { margin: 6px 8px 4px; padding: 6px; border: 1px dashed rgba(0, 0, 0, .25); background: var(--bg); border-radius: 4px; cursor: pointer; font: inherit; }
+  #items { flex: 1; overflow: auto; }
+  .item { display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 11px; cursor: pointer; }
+  .item:hover { background: rgba(0, 0, 0, .06); }
+  .item.on { background: rgba(0, 0, 0, .12); }
+  .item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .nm[contenteditable='true'] { user-select: text; background: #fff; outline: 1px solid #4c8bf5; border-radius: 3px; padding: 0 3px; }
+  .item button { border: 0; background: transparent; cursor: pointer; opacity: 0; font-size: 13px; padding: 2px 4px; }
+  .item:hover button { opacity: .6; }
+  .item button:hover { opacity: 1; }
+</style>
+
+<div id="hd">
+  <div id="title" contenteditable spellcheck="false"></div>
+  <div id="sp"></div>
+  <button id="b-list" title="메모 목록">☰</button>
+  <button id="b-pin" title="고정 (최소화해도 화면 끝 탭에 제목이 남습니다)">📌</button>
+  <button id="b-hide" title="최소화">─</button>
+</div>
+
+<div id="wrap">
+  <div id="ed" contenteditable spellcheck="false"></div>
+  <div id="grip" hidden></div>
+  <div id="tools" hidden>
+    <button data-a="border">테두리</button>
+    <button data-a="reset">원래 크기</button>
+    <button data-a="del">삭제</button>
+  </div>
+  <div id="panel" hidden>
+    <button id="b-new">+ 새 메모</button>
+    <div id="items"></div>
+  </div>
+</div>
+
+<script src="index.js"></script>

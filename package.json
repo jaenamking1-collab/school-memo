@@ -1,0 +1,53 @@
+{
+  "name": "school-memo",
+  "version": "0.1.0",
+  "description": "폴더에 파일로 저장하는 메모장 위젯",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "rcedit": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.jaenamking1.school-memo",
+    "productName": "school-memo",
+    "afterPack": "./afterPack.js",
+    "files": [
+      "main.js",
+      "preload.js",
+      "store.js",
+      "name.js",
+      "index.html",
+      "index.js",
+      "dock.html",
+      "icon.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "메모"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jaenamking1-collab",
+        "repo": "school-memo",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

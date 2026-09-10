@@ -1,0 +1,84 @@
+<meta charset="utf-8" />
+<title>메모 탭</title>
+<style>
+  /* 탭 높이 26 + 틈 4 = main.js 의 TAB_H(30) 과 맞춰야 한다 */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  body { padding: 3px; box-sizing: border-box; font: 12px/1 "Malgun Gothic", "맑은 고딕", sans-serif; }
+  /* 탭: 북마크를 옆으로 누인 모양. 파인 쪽이 화면 안쪽을 본다.
+     clip-path 는 border/box-shadow 를 잘라내므로 그림자는 filter 로 준다. */
+  .tab {
+    height: 26px; margin-bottom: 4px;
+    display: flex; align-items: center;
+    background: rgba(253, 240, 122, .5);
+    color: #4a4012;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+  }
+  /* 탭 줄이 화면 오른쪽에 있을 때 — 왼쪽 끝이 파인다 */
+  .tab { padding: 0 4px 0 14px; clip-path: polygon(0 50%, 9px 0, 100% 0, 100% 100%, 9px 100%); }
+  /* 왼쪽에 있을 때 — 오른쪽 끝이 파인다 */
+  body.left .tab { padding: 0 14px 0 4px; clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); }
+  .tab.on { font-weight: 700; }
+  #new { justify-content: center; font-size: 15px; color: #6b5f2a; }
+</style>
+
+<div id="d"></div>
+
+<script>
+  const d = document.getElementById('d');
+
+  function render({ side, tabs }) {
+    document.body.classList.toggle('left', side === 'left');
+    d.innerHTML = '';
+    for (const t of tabs) {
+      const el = document.createElement('div');
+      el.className = 'tab' + (t.on ? ' on' : '');
+      el.style.background = t.color; // 포스트잇 색이 탭에도 그대로
+      el.style.opacity = t.on ? 1 : .62; // 최소화한 건 흐리게
+      el.textContent = t.title;
+      el.title = t.title;
+      el.dataset.id = t.id;
+      d.append(el);
+    }
+    const n = document.createElement('div');
+    n.className = 'tab';
+    n.id = 'new';
+    n.textContent = '+';
+    n.title = '새 메모';
+    d.append(n);
+  }
+
+  dock.onTabs(render);
+
+  // 끌면 탭 줄이 움직이고, 그냥 누르면 그 탭의 메모가 나온다.
+  // 움직임은 창 전체에서 받는다 — 탭 위에 건 포인터 캡처는 마우스가 창 밖으로 나가면 놓친다.
+  d.addEventListener('pointerdown', async (e) => {
+    if (e.button !== 0) return;
+    const sx = e.screenX, sy = e.screenY;
+    const from = e.target.closest('.tab');
+    let moved = false;
+    // 커서가 창 밖으로 나가도 계속 받으려면 눌린 요소가 포인터를 잡고 있어야 한다
+    try { e.target.setPointerCapture(e.pointerId); } catch {}
+
+    const move = (ev) => {
+      const dx = ev.screenX - sx, dy = ev.screenY - sy;
+      if (!moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return; // 살짝 흔들린 건 누른 걸로 친다
+      moved = true;
+      dock.drag(dx, dy);
+    };
+    const up = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', up);
+      if (moved) dock.dragEnd();
+      else if (from && from.id === 'new') dock.newMemo();
+      else if (from) dock.tab(Number(from.dataset.id));
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', up);
+
+    await dock.dragStart();
+  });
+
+  d.addEventListener('contextmenu', () => dock.menu());
+</script>
