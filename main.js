@@ -338,7 +338,7 @@ ipcMain.handle('dock-tab', (_e, id) => {
   const m = memos.find((x) => x.win.webContents.id === id);
   if (m) showMemo(m);
 });
-ipcMain.handle('dock-new', () => createMemo(null));
+ipcMain.handle('new-memo', () => createMemo(null)); // 탭 줄의 + 와 목록의 + 새 메모 둘 다 쓴다
 ipcMain.handle('dock-menu', () => popupMenu(null));
 
 // ---- 포스트잇 ----

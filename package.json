@@ -1,6 +1,6 @@
 {
   "name": "school-memo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "폴더에 파일로 저장하는 메모장 위젯",
   "main": "main.js",
   "scripts": {

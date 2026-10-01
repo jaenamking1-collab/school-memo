@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('memo', {
   hide: call('hide'),
   menu: call('menu'),
   pin: call('pin'),
+  newMemo: call('new-memo'),
   openLink: call('open-link'),
   claim: call('claim'),
   setDoc: call('set-doc'),
@@ -27,7 +28,7 @@ contextBridge.exposeInMainWorld('dock', {
   drag: call('dock-drag'),
   dragEnd: call('dock-drag-end'),
   tab: call('dock-tab'),
-  newMemo: call('dock-new'),
+  newMemo: call('new-memo'),
   menu: call('dock-menu'),
   onTabs: (fn) => ipcRenderer.on('tabs', (_e, tabs) => fn(tabs)),
 });

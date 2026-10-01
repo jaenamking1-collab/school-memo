@@ -112,11 +112,11 @@ $('b-list').onclick = async () => {
   p.hidden = false;
   $('b-list').classList.add('on');
 };
+// 새 메모는 지금 포스트잇을 덮어쓰지 않고 새 포스트잇(스티커)으로 뜬다
 $('b-new').onclick = async () => {
   await flush();
-  show(null, null);
   closePanel();
-  title.focus();
+  memo.newMemo();
 };
 
 // ---- 창 ----
