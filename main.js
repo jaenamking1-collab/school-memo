@@ -70,7 +70,7 @@ const find = (e) => memos.find((m) => m.win.webContents.id === e.sender.id);
 const tabbed = () => memos.filter((m) => m.win.isVisible() || m.pinned);
 
 function dockHeight() {
-  return (tabbed().length + 1) * TAB_H + PAD * 2 - 4; // 마지막 칸(+) 아래 틈은 뺀다
+  return (tabbed().length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
 }
 
 // 화면 끝 가까이 가면 딱 붙인다
@@ -214,27 +214,53 @@ function showMemo(m) {
   updateDock();
 }
 
+// 포스트잇 색 고르기. 제목 줄의 🎨 버튼과 우클릭 메뉴가 같이 쓴다.
+const colorItems = (m) =>
+  COLORS.map(([label, hex]) => ({
+    label,
+    type: 'radio',
+    checked: m.color === hex,
+    click: () => {
+      m.color = hex;
+      m.win.setBackgroundColor(hex);
+      m.win.webContents.send('color', hex);
+      updateDock();
+    },
+  }));
+
+// 저장된 메모 전부를 메뉴로. 포스트잇이 하나도 안 떠 있어도 여기서 바로 연다.
+function memoItems() {
+  const f = folder();
+  const names = f ? store.list(f) : [];
+  if (!names.length) return [{ label: '저장된 메모 없음', enabled: false }];
+  return names.map((n) => {
+    const open = memos.find((x) => x.name === n);
+    return {
+      label: n.replace(/\.html$/i, ''),
+      type: 'checkbox',
+      checked: !!open && open.win.isVisible(), // 지금 떠 있는 메모엔 표시
+      click: () => (open ? showMemo(open) : createMemo(n)),
+    };
+  });
+}
+
+function listMenu() {
+  Menu.buildFromTemplate([
+    { label: '+ 새 메모', click: () => createMemo(null) },
+    { type: 'separator' },
+    ...memoItems(),
+  ]).popup({ window: dock });
+}
+
 // 탭 줄에서도, 포스트잇 위에서도 같은 메뉴를 쓴다
 function popupMenu(m) {
   const items = [
     { label: '새 메모', click: () => createMemo(null) },
+    { label: '메모 목록', submenu: memoItems() },
     { type: 'separator' },
   ];
   if (m) {
-    items.push({
-      label: '포스트잇 색',
-      submenu: COLORS.map(([label, hex]) => ({
-        label,
-        type: 'radio',
-        checked: m.color === hex,
-        click: () => {
-          m.color = hex;
-          m.win.setBackgroundColor(hex);
-          m.win.webContents.send('color', hex);
-          updateDock();
-        },
-      })),
-    });
+    items.push({ label: '포스트잇 색', submenu: colorItems(m) });
     items.push({ type: 'separator' });
   }
   items.push(
@@ -339,6 +365,7 @@ ipcMain.handle('dock-tab', (_e, id) => {
   if (m) showMemo(m);
 });
 ipcMain.handle('new-memo', () => createMemo(null)); // 탭 줄의 + 와 목록의 + 새 메모 둘 다 쓴다
+ipcMain.handle('dock-list', listMenu);
 ipcMain.handle('dock-menu', () => popupMenu(null));
 
 // ---- 포스트잇 ----
@@ -355,6 +382,10 @@ ipcMain.handle('hide', (e) => {
   }
 });
 ipcMain.handle('menu', (e) => popupMenu(find(e)));
+ipcMain.handle('color-menu', (e) => {
+  const m = find(e);
+  if (m) Menu.buildFromTemplate(colorItems(m)).popup({ window: m.win });
+});
 
 // 고정: 최소화해도 오른쪽 탭에 제목이 남는다
 ipcMain.handle('pin', (e, v) => {

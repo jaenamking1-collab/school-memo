@@ -41,6 +41,14 @@
       el.dataset.id = t.id;
       d.append(el);
     }
+    // 포스트잇이 하나도 없어도 여기서 저장된 메모를 전부 볼 수 있다
+    const l = document.createElement('div');
+    l.className = 'tab';
+    l.id = 'list';
+    l.textContent = '☰';
+    l.title = '메모 목록';
+    d.append(l);
+
     const n = document.createElement('div');
     n.className = 'tab';
     n.id = 'new';
@@ -71,6 +79,7 @@
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
       if (moved) dock.dragEnd();
+      else if (from && from.id === 'list') dock.list();
       else if (from && from.id === 'new') dock.newMemo();
       else if (from) dock.tab(Number(from.dataset.id));
     };

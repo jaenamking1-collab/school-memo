@@ -120,6 +120,7 @@ $('b-new').onclick = async () => {
 };
 
 // ---- 창 ----
+$('b-color').onclick = () => memo.colorMenu();
 $('b-hide').onclick = async () => { await flush(); memo.hide(); };
 $('b-pin').onclick = async () => {
   const v = await memo.pin(!$('b-pin').classList.contains('on'));
