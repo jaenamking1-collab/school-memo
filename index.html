@@ -18,13 +18,11 @@
     flex-direction: column;
   }
 
-  #hd { display: flex; align-items: center; gap: 1px; padding: 3px 3px 2px 0; flex: none; -webkit-app-region: drag; }
+  #hd { display: flex; align-items: center; gap: 1px; padding: 3px 3px 2px 0; flex: none; cursor: default; } /* 끌기는 index.js 가 맡는다. drag 영역은 더블클릭을 받지 못한다 */
 
   #title {
     flex: 0 1 auto;
     min-width: 34px;
-    -webkit-app-region: no-drag;
-    user-select: text;
     font-weight: 700;
     font-size: 13px;
     white-space: nowrap;
@@ -33,17 +31,27 @@
     padding: 3px 6px 3px 10px;
     border-radius: 3px;
   }
-  #title:focus { background: rgba(255, 255, 255, .7); }
+  #title[contenteditable='true'] { background: rgba(255, 255, 255, .7); user-select: text; cursor: text; }
   #title:empty::before { content: attr(data-auto); opacity: .45; } /* 제목을 안 적으면 본문 첫 글을 보여준다 */
   #sp { flex: 1; align-self: stretch; } /* 창을 끄는 빈 자리 */
   #hd button {
-    -webkit-app-region: no-drag;
     width: 22px; height: 21px;
     border: 0; background: transparent; border-radius: 4px;
     font-size: 12px; line-height: 1; cursor: pointer; color: #554c22;
   }
   #hd button:hover { background: rgba(0, 0, 0, .1); }
   #hd button.on { background: rgba(0, 0, 0, .17); }
+
+  /* 색 고르기 */
+  #colors {
+    position: fixed; top: 25px; right: 4px; z-index: 10;
+    display: flex; gap: 5px; padding: 6px;
+    background: #fffbe0; border-radius: 7px;
+    box-shadow: 0 2px 8px rgba(60, 45, 0, .4);
+  }
+  #colors button { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(90, 70, 0, .3); border-radius: 5px; cursor: pointer; }
+  #colors button:hover { transform: scale(1.12); }
+  #colors button.on { box-shadow: 0 0 0 2px #fffbe0, 0 0 0 4px #4c8bf5; }
 
   #wrap { position: relative; flex: 1; min-height: 0; }
 
@@ -78,13 +86,14 @@
 </style>
 
 <div id="hd">
-  <div id="title" contenteditable spellcheck="false" data-auto="제목"></div>
+  <div id="title" spellcheck="false" data-auto="제목" title="더블클릭해서 제목 고치기"></div>
   <div id="sp"></div>
   <button id="b-new" title="새 메모">+</button>
   <button id="b-color" title="포스트잇 색 바꾸기">🎨</button>
-  <button id="b-list" title="메모 목록">☰</button>
   <button id="b-hide" title="최소화 (화면 끝 탭에 남습니다)">─</button>
 </div>
+
+<div id="colors" hidden></div>
 
 <div id="wrap">
   <div id="ed" contenteditable spellcheck="false"></div>

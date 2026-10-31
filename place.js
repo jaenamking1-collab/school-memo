@@ -2,44 +2,70 @@
 const hits = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 exports.hits = hits;
 
-// 시작 칸에서 아래로 내려가며 빈자리를 찾고, 그 줄이 차면 dir 쪽(-1 왼쪽, 1 오른쪽) 옆 줄로 넘어간다.
-// 크기가 제각각인 포스트잇도 칸 계산 없이 실제로 겹치는 것만 보고 건너뛴다.
-function sweep({ x, y }, size, area, others, dir) {
-  const { width: w, height: h, gap } = size;
-  const bottom = area.y + area.height;
-  const fits = (px) => px >= area.x && px + w <= area.x + area.width;
-  for (let top = y; fits(x); top = area.y) {
-    for (let py = top; py + h <= bottom; ) {
-      const box = { x, y: py, width: w, height: h };
-      const on = others.filter((b) => hits(box, b));
-      if (!on.length) return box;
-      py = Math.max(...on.map((b) => b.y + b.height)) + gap;
-    }
-    if (top !== area.y) continue; // 시작 줄은 기준 메모 위쪽까지 본 다음에 옆으로 넘어간다
-    const col = others.filter((b) => x < b.x + b.width && b.x < x + w);
-    x = !col.length ? x + dir * (w + gap)
-      : dir < 0 ? Math.min(...col.map((b) => b.x)) - gap - w
-      : Math.max(...col.map((b) => b.x + b.width)) + gap;
-  }
-  return null;
+// 방향별 벌점(px). 조금 더 멀어도 아래를 먼저 쓰고, 그다음 펼칠 방향, 위, 반대 방향 순이다.
+const SIDE = { below: 0, toward: 40, above: 80, away: 120 };
+
+function score(box, from, dir) {
+  const fromRight = from.x + from.width, fromBottom = from.y + from.height;
+  const gapX = Math.max(0, from.x - (box.x + box.width), box.x - fromRight);
+  const gapY = Math.max(0, from.y - (box.y + box.height), box.y - fromBottom);
+  const isLeft = box.x + box.width <= from.x, isRight = box.x >= fromRight;
+  const side = box.y >= fromBottom ? 'below'
+    : (dir < 0 ? isLeft : isRight) ? 'toward'
+    : box.y + box.height <= from.y ? 'above'
+    : 'away';
+  // 거리가 같으면 기준 메모와 줄이 맞는 자리가 이긴다
+  const center = Math.abs(box.x + box.width / 2 - (from.x + from.width / 2)) + Math.abs(box.y + box.height / 2 - (from.y + from.height / 2));
+  return gapX + gapY + SIDE[side] + center * 0.01;
 }
 
-// 기준(from) 바로 아래가 첫 자리. 그쪽 방향이 다 차면 반대 방향, 그래도 없으면 조금씩 어긋나게 쌓는다.
+// 기준(from)에서 가장 가까운 빈자리. 다른 메모의 네 변에 딱 붙는 자리만 후보로 본다.
+// 크기가 제각각이어도 그대로 되고, 위에서부터 훑지 않으니 멀리 튀지 않는다.
 exports.freeSpot = (from, size, area, others, dir) => {
-  const x = dir < 0 ? from.x + from.width - size.width : from.x;
-  const start = {
-    x: Math.min(Math.max(x, area.x), area.x + area.width - size.width),
-    y: Math.max(from.y + from.height + size.gap, area.y),
-  };
-  const box = sweep(start, size, area, others, dir) || sweep(start, size, area, others, -dir);
-  if (box) return box;
+  const { width: w, height: h, gap } = size;
+  const right = area.x + area.width - w, bottom = area.y + area.height - h;
+  const xs = [area.x, right], ys = [area.y, bottom];
+  for (const o of [from, ...others]) {
+    xs.push(o.x, o.x + o.width - w, o.x - w - gap, o.x + o.width + gap);
+    ys.push(o.y, o.y + o.height - h, o.y - h - gap, o.y + o.height + gap);
+  }
+  let best = null, bestScore = Infinity;
+  for (const x of xs) {
+    if (x < area.x || x > right) continue;
+    for (const y of ys) {
+      if (y < area.y || y > bottom) continue;
+      const box = { x, y, width: w, height: h };
+      if (others.some((o) => hits(box, o))) continue;
+      const s = score(box, from, dir);
+      if (s < bestScore) { best = box; bestScore = s; }
+    }
+  }
+  if (best) return best;
+  // 화면이 정말 꽉 찼다. 똑같은 자리에 포개지 않게 조금씩 어긋나게 쌓는다.
   const n = others.length * 24;
   return {
-    x: area.x + area.width - size.width - n % Math.max(24, area.width - size.width),
-    y: area.y + n % Math.max(24, area.height - size.height),
-    width: size.width,
-    height: size.height,
+    x: right - n % Math.max(24, area.width - w),
+    y: area.y + n % Math.max(24, area.height - h),
+    width: w,
+    height: h,
   };
+};
+
+// 정렬한 순서대로 위에서 아래로 쌓고, 줄이 차면 옆 줄로 넘어간다.
+// 메모마다 벽(edge) 쪽으로 닿을 때까지 밀어 붙여서, 크기가 달라도 틈이 남지 않는다.
+exports.stackBoxes = (sizes, area, edge, dir, gap) => {
+  const placed = [];
+  let y = area.y;
+  for (const { width, height } of sizes) {
+    if (y > area.y && y + height > area.y + area.height) y = area.y;
+    const row = placed.filter((b) => y < b.y + b.height && b.y < y + height);
+    const x = dir < 0
+      ? Math.min(edge, ...row.map((b) => b.x - gap)) - width
+      : Math.max(edge, ...row.map((b) => b.x + b.width + gap));
+    placed.push({ x: Math.min(Math.max(x, area.x), area.x + area.width - width), y, width, height });
+    y += height + gap;
+  }
+  return placed;
 };
 
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.

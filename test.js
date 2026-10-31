@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -118,18 +118,34 @@ const overlap = (a, list) => list.some((o) => a.x < o.x + o.width && o.x < a.x +
 
 // 기준 메모 바로 아래가 첫 자리
 assert.deepEqual(freeSpot(box(700, 10), size, area, [box(700, 10)], -1), box(700, 229));
-// 아래가 다 찼으면 왼쪽 줄로
+// 아래가 다 찼으면 맨 위로 튀지 않고 바로 옆에 붙는다
 let wall = [box(700, 10), box(700, 229), box(700, 448)];
-assert.deepEqual(freeSpot(wall[2], size, area, wall, -1), box(426, 0));
-// 왼쪽 벽에 붙어 있으면 반대(오른쪽)로 간다
+assert.deepEqual(freeSpot(wall[2], size, area, wall, -1), box(426, 448));
+// 왼쪽 벽에 붙어 있으면 오른쪽으로 간다
 wall = [box(0, 10), box(0, 229), box(0, 448)];
-assert.deepEqual(freeSpot(wall[2], size, area, wall, 1), box(274, 0));
+assert.deepEqual(freeSpot(wall[2], size, area, wall, 1), box(274, 448));
+// 스샷3: 크기가 다른 메모가 쌓여 있어도 저 멀리 가지 않고 맞닿은 곳에 나온다
+wall = [box(650, 0, 340, 240), box(650, 330, 340, 260), box(300, 600 - 500, 346, 500)];
+const near = freeSpot(wall[2], size, area, wall, -1);
+assert.ok(!overlap(near, wall));
+assert.ok(near.x + near.width >= 300 - 8 && near.x <= 650, JSON.stringify(near));
 // 크기가 제각각이어도 겹치지 않는다 (스샷: 넓은 메모 4개 + 새 메모)
 wall = [box(20, 25, 238, 215), box(260, 25, 238, 215), box(500, 25, 238, 215), box(740, 25, 238, 215)];
 assert.ok(!overlap(freeSpot(wall[3], size, area, wall, -1), wall));
 // 화면이 정말 꽉 차도 앞 메모와 똑같은 자리에 포개지 않는다
 const full = freeSpot(box(0, 0), size, area, [box(0, 0, 1000, 700)], -1);
 assert.notDeepEqual([full.x, full.y], [0, 0]);
+
+// 정렬해서 쌓기: 크기가 달라도 겹치지 않고 벽 쪽으로 붙는다
+const wide = { x: 0, y: 0, width: 1400, height: 700 };
+const sizes = [box(0, 0, 340, 300), box(0, 0, 500, 300), box(0, 0, 270, 215), box(0, 0, 270, 215)];
+const st = stackBoxes(sizes, wide, 1400, -1, 4);
+st.forEach((a, i) => assert.ok(!overlap(a, st.filter((_, j) => j !== i)), 'stack ' + i));
+assert.equal(st[0].x + st[0].width, 1400);
+assert.equal(st[1].x + st[1].width, 1400);
+assert.equal(st[2].y, 0); // 줄이 차면 맨 위로
+assert.equal(st[2].x + st[2].width, st[0].x - 4); // 좁은 메모 옆에 틈 없이 붙는다
+assert.ok(stackBoxes(sizes, wide, 0, 1, 4).every((b) => b.x >= 0));
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];
