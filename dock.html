@@ -27,7 +27,7 @@
   body.left .tab { padding: 0 11px 0 7px; clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%); }
   .tab.on { font-weight: 700; }
   /* 글자는 안쪽 여백에서 잘린다. 뾰족한 끝으로 넘어가면 글자가 찢겨 보인다 */
-  .tab span { min-width: 0; overflow: hidden; white-space: nowrap; }
+  .tab span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #list, #new { justify-content: center; }
   #new { font-size: 15px; color: #6b5f2a; }
 </style>

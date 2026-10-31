@@ -2,11 +2,12 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut, deskto
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, followDock, sortMemos, hits } = require('./place');
+const { freeSpot, pushBoxes, reflow, snapMove, followDock, rowBoxes, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
-const DOCK_W = 62;
+const DOCK_MIN = 62;
+const DOCK_MAX = 140; // 이보다 긴 제목은 … 로 줄인다
 const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
@@ -49,7 +50,13 @@ async function askFolder() {
     title: '메모를 저장할 폴더를 고르세요 (구글드라이브/원드라이브 폴더도 됩니다)',
     properties: ['openDirectory', 'createDirectory'],
   });
-  return r.canceled ? null : r.filePaths[0] || null;
+  const f = r.canceled ? null : r.filePaths[0] || null;
+  // 깃 저장소 안에 메모를 두면 개인 내용이 커밋에 섞여 올라갈 수 있다
+  if (f && fs.existsSync(path.join(f, '.git'))) {
+    dialog.showErrorBox('메모', '이 폴더는 프로그램 소스 폴더라 메모를 저장할 수 없습니다.\n다른 폴더를 골라주세요.');
+    return askFolder();
+  }
+  return f;
 }
 
 async function pickFolder() {
@@ -103,11 +110,17 @@ const find = (e) => memos.find((m) => m.win.webContents.id === e.sender.id);
 
 // ---- 탭 줄 ----
 // 고른 정렬 순서대로. 저장 전인 새 메모는 at 이 없어 최근순 맨 위에 온다.
-function tabbed() {
+function tabbed(order = settings.order) {
   const at = new Map((folder() ? store.listAt(folder()) : []).map((x) => [x.name, x.at]));
   const rows = memos.map((m) => ({ m, title: m.title || '', at: at.get(m.name) }));
-  return sortMemos(rows, settings.order).map((x) => x.m);
+  return sortMemos(rows, order).map((x) => x.m);
 }
+
+// 탭 폭은 가장 긴 제목에 맞춘다. 28: 뾰족한 끝과 그림자 자리
+const textWidth = (t) => [...t].reduce((n, c) => n + (c.charCodeAt(0) > 0x2e80 ? 13 : 7.5), 0);
+// 막 여는 중인 메모는 제목이 아직 없으니 파일 이름으로 잰다. 안 그러면 폭이 잠깐 튀어 옆 메모를 민다.
+const tabText = (m) => m.title || (m.name || '').replace(/\.html$/i, '') || '제목 없음';
+const dockWidth = () => clamp(Math.max(0, ...memos.map((m) => textWidth(tabText(m)))) + 28, DOCK_MIN, DOCK_MAX);
 
 function dockHeight() {
   return (memos.length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
@@ -116,8 +129,9 @@ function dockHeight() {
 // 화면 끝 가까이 가면 딱 붙인다
 function snapToEdge(x, y) {
   const h = dockHeight();
-  const wa = workArea({ x, y, width: DOCK_W, height: h });
-  const right = wa.x + wa.width - DOCK_W;
+  // 폭까지 넣어 재면 넓어진 탭 줄이 두 화면에 걸칠 때 옆 화면으로 튄다. 왼쪽 끝 위치로 판단한다.
+  const wa = workArea({ x, y });
+  const right = wa.x + wa.width - dockWidth();
   const bottom = wa.y + wa.height - h;
   if (x - wa.x < SNAP) x = wa.x;
   else if (right - x < SNAP) x = right;
@@ -130,11 +144,12 @@ function updateDock() {
   if (!dock || dock.isDestroyed()) return;
   const b = dock.getBounds();
   const p = snapToEdge(b.x, b.y); // 탭이 늘면 화면 밖으로 나가지 않게 다시 맞춘다
-  dock.setBounds({ x: p.x, y: p.y, width: DOCK_W, height: dockHeight() });
+  dock.setBounds({ x: p.x, y: p.y, width: dockWidth(), height: dockHeight() });
+  if (dockWidth() > b.width) clearOfDock();
   const wa = workArea(p); // 옆 모니터로 옮겼으면 그 모니터 기준으로 다시 본다
   dock.webContents.send('tabs', {
     // 북마크의 파인 쪽이 화면 안쪽(벽 반대편)을 보도록
-    side: p.x + DOCK_W / 2 < wa.x + wa.width / 2 ? 'left' : 'right',
+    side: p.x + dockWidth() / 2 < wa.x + wa.width / 2 ? 'left' : 'right',
     hotkey: hotkeyOn ? HOTKEY : '',
     // 최소화한 것도 흐리게 탭에 남는다
     tabs: tabbed()
@@ -154,6 +169,18 @@ function updateDock() {
 const place = (m) => ({ ...m.win.getBounds(), ...m.size });
 const put = (m, { x, y }) => m.win.setBounds({ x, y, ...m.size });
 
+// 제목이 길어져 탭 줄이 넓어지면 바로 옆 메모를 덮는다. 덮인 메모만 비킨다.
+function clearOfDock() {
+  const d = dock.getBounds();
+  const wa = workArea(d);
+  const shown = memos.filter((m) => m.win.isVisible() && workArea(place(m)).x === wa.x);
+  const boxes = shown.map(place);
+  const next = pushBoxes(boxes, d, direction(d), GAP);
+  shown.forEach((m, i) => {
+    if (next[i].x !== boxes[i].x) put(m, { x: clamp(next[i].x, wa.x, wa.x + wa.width - boxes[i].width), y: boxes[i].y });
+  });
+}
+
 function saveOpen() {
   // 목록 때문에 잠깐 비켜난 메모는 원래 자리를 적는다
   settings.open = memos.map((m) => ({ name: m.name, hidden: !m.win.isVisible(), bounds: m.home || place(m) }));
@@ -163,11 +190,11 @@ function saveOpen() {
 function createDock() {
   const wa = require('electron').screen.getPrimaryDisplay().workArea;
   // 경계값(wa.x + wa.width)을 주면 옆 모니터로 넘어간다. 폭을 빼서 이 화면 안에 둔다.
-  const saved = settings.dock || { x: wa.x + wa.width - DOCK_W, y: wa.y + Math.round(wa.height / 4) };
+  const saved = settings.dock || { x: wa.x + wa.width - dockWidth(), y: wa.y + Math.round(wa.height / 4) };
   const p = snapToEdge(saved.x, saved.y);
   dock = new BrowserWindow({
     ...p,
-    width: DOCK_W,
+    width: dockWidth(),
     height: dockHeight(),
     frame: false,
     transparent: true,
@@ -277,13 +304,18 @@ function memoItems() {
   });
 }
 
-// 고른 순서대로 탭 줄 쪽 벽부터 떠 있는 포스트잇을 붙여 쌓는다
+// 정렬: 최근 수정한 메모부터 왼쪽 위에서 차곡차곡. 탭 줄이 왼쪽 벽에 있으면 그 옆부터 쓴다.
 function arrange() {
+  comeBack(true);
   const d = dock.getBounds();
-  const dir = direction(d);
-  const shown = tabbed().filter((x) => x.win.isVisible());
-  const edge = dir < 0 ? d.x - GAP : d.x + d.width + GAP;
-  const boxes = stackBoxes(shown.map((m) => m.size), memoArea(d), edge, dir, GAP);
+  const area = memoArea(d);
+  if (direction(d) > 0) {
+    const left = d.x + d.width + GAP;
+    area.width -= left - area.x;
+    area.x = left;
+  } else area.width = d.x - GAP - area.x;
+  const shown = tabbed('recent').filter((x) => x.win.isVisible());
+  const boxes = rowBoxes(shown.map((m) => m.size), area, GAP);
   shown.forEach((m, i) => put(m, boxes[i]));
   saveOpen();
 }
@@ -291,12 +323,7 @@ function arrange() {
 function setOrder(order) {
   settings.order = order;
   updateDock();
-  comeBack(true);
-  arrange();
-  if (listWin) {
-    pushAside(listWin.getBounds());
-    listWin.webContents.send('list-data', listData());
-  }
+  if (listWin) listWin.webContents.send('list-data', listData());
 }
 
 // ---- 목록 창이 뒤의 메모를 가리지 않게: 열리면 옆으로 비켜나고 닫히면 돌아온다 ----
@@ -462,13 +489,7 @@ function popupMenu(m) {
   const items = [
     { label: '새 메모', click: () => createMemo(null) },
     { label: '메모 목록', submenu: memoItems() },
-    {
-      label: '메모 정렬',
-      submenu: [['최근순', 'recent'], ['이름순', 'name']].map(([label, order]) => ({
-        label,
-        click: () => setOrder(order),
-      })),
-    },
+    { label: '정렬 (왼쪽 위부터, 최근 수정순)', click: arrange },
     { type: 'separator' },
   ];
   items.push(
@@ -566,7 +587,7 @@ ipcMain.handle('dock-drag', (_e, dx, dy) => {
   if (!dragFrom) return; // dragStart 가 아직 안 왔으면 무시
   const p = snapToEdge(dragFrom.x + dx, dragFrom.y + dy);
   // setPosition 은 화면 경계를 넘는 순간 창을 키운다. 크기까지 함께 넣는다.
-  dock.setBounds({ x: p.x, y: p.y, width: DOCK_W, height: dockHeight() });
+  dock.setBounds({ x: p.x, y: p.y, width: dockWidth(), height: dockHeight() });
   // 펼쳐둔 건 늘어놓은 모양 그대로 같이 따라온다
   const to = { ...dragFrom, x: p.x, y: p.y };
   dragMemos.forEach(({ m, b }) => put(m, followDock(b, dragFrom, to, direction(dragFrom), direction(to), memoArea(to))));
@@ -728,6 +749,10 @@ ipcMain.handle('list-folder', () => {
   comeBack(true); // 비켜난 자리가 아니라 제자리를 기억하고 옮긴다
   listWin?.close();
   return changeFolder();
+});
+ipcMain.handle('list-arrange', () => {
+  arrange();
+  listWin?.close();
 });
 ipcMain.handle('list-order', (_e, order) => setOrder(order === 'name' ? 'name' : 'recent'));
 ipcMain.handle('list-remove', (_e, name) => {

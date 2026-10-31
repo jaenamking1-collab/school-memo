@@ -147,6 +147,21 @@ exports.followDock = (b, from, to, fromDir, toDir, area) => {
   };
 };
 
+// 왼쪽 위부터 차곡차곡. 왼쪽에서 오른쪽으로 놓고, 줄이 차면 다음 줄로 간다.
+// 메모마다 바로 위 메모에 닿는 높이까지 올라가므로 크기가 달라도 틈이 남지 않는다.
+exports.rowBoxes = (sizes, area, gap) => {
+  const placed = [];
+  let x = area.x;
+  for (const { width, height } of sizes) {
+    if (x > area.x && x + width > area.x + area.width) x = area.x;
+    const above = placed.filter((b) => x < b.x + b.width && b.x < x + width);
+    const y = Math.max(area.y, ...above.map((b) => b.y + b.height + gap));
+    placed.push({ x, y: Math.min(y, Math.max(area.y, area.y + area.height - height)), width, height });
+    x += width + gap;
+  }
+  return placed;
+};
+
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.
 exports.sortMemos = (list, order) =>
   [...list].sort((a, b) =>

@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('memoList', {
   remove: call('list-remove'),
   restore: call('list-restore'),
   folder: call('list-folder'),
+  arrange: call('list-arrange'),
   onData: (fn) => ipcRenderer.on('list-data', (_e, d) => fn(d)),
 });
 

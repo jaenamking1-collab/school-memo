@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, followDock, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, followDock, rowBoxes, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -261,6 +261,16 @@ assert.deepEqual(followDock(box(1700, 100), dockA, dockB, -1, 1, right), box(211
 assert.deepEqual(followDock(box(1700, 100), dockA, { ...dockA, y: 500 }, -1, -1, { x: 0, y: 44, width: 2048, height: 1000 }), box(1700, 300));
 // 화면 밖으로 나가면 안으로 들어온다
 assert.equal(followDock(box(1700, 100), dockA, { ...dockA, y: 1100 }, -1, -1, { x: 0, y: 44, width: 2048, height: 1000 }).y, 829);
+
+// 왼쪽 위부터 차곡차곡
+const rowArea = { x: 100, y: 44, width: 912, height: 800 };
+const rows = rowBoxes([box(0, 0, 300, 200), box(0, 0, 300, 400), box(0, 0, 300, 200), box(0, 0, 300, 100), box(0, 0, 300, 100)], rowArea, 4);
+assert.deepEqual([rows[0].x, rows[0].y], [100, 44]); // 맨 앞은 왼쪽 위
+assert.deepEqual([rows[1].x, rows[1].y], [404, 44]); // 오른쪽으로
+assert.deepEqual([rows[2].x, rows[2].y], [708, 44]);
+assert.deepEqual([rows[3].x, rows[3].y], [100, 248]); // 줄이 차면 왼쪽으로 돌아와 위 메모에 붙는다
+assert.deepEqual([rows[4].x, rows[4].y], [404, 448]); // 위 메모가 길면 그 아래에
+rows.forEach((a, i) => assert.ok(!overlap(a, rows.filter((_, j) => j !== i)), 'row ' + i));
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];

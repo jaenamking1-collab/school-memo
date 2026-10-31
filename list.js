@@ -63,6 +63,7 @@ document.querySelectorAll('[data-o]').forEach((b) => { b.onclick = () => memoLis
 $('new').onclick = () => memoList.newMemo();
 $('q').oninput = render;
 $('folder').onclick = () => memoList.folder();
+$('arrange').onclick = () => memoList.arrange();
 $('trash').onclick = () => { inTrash = !inTrash; render(); };
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
