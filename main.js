@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
@@ -389,6 +389,62 @@ function openList(from) {
   });
 }
 
+// ---- 스크린샷: 메모를 치우고 화면을 찍은 뒤, 그 사진 위에서 영역을 고른다 ----
+let shot = null;
+
+async function startShot(m) {
+  if (shot || !folder()) return;
+  listWin?.close();
+  const shown = memos.filter((x) => x.win.isVisible());
+  shot = { m, shown };
+  shown.forEach((x) => x.win.hide());
+  dock.hide();
+  try {
+    await new Promise((r) => setTimeout(r, 200)); // 창이 사라지는 효과가 찍히지 않게
+    const d = require('electron').screen.getDisplayMatching(place(m));
+    const thumbnailSize = { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) };
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize });
+    const source = sources.find((s) => s.display_id === String(d.id)) || sources[0];
+    shot.image = source.thumbnail;
+    shot.bounds = d.bounds;
+    const win = new BrowserWindow({
+      ...d.bounds,
+      frame: false,
+      resizable: false,
+      movable: false,
+      show: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    });
+    shot.win = win;
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.loadFile('shot.html');
+    win.once('ready-to-show', () => { win.show(); win.focus(); });
+    win.on('closed', () => endShot(null)); // Alt+F4 로 닫아도 메모는 돌아온다
+  } catch (e) {
+    endShot(null);
+    dialog.showErrorBox('메모', '화면을 찍지 못했습니다.\n\n' + e.message);
+  }
+}
+
+// 취소든 완료든 숨긴 메모는 반드시 돌아온다
+function endShot(rect) {
+  if (!shot) return;
+  const { m, shown, image, bounds, win } = shot;
+  shot = null;
+  if (win && !win.isDestroyed()) win.close();
+  shown.forEach((x) => !x.win.isDestroyed() && x.win.showInactive());
+  dock.show();
+  if (m.win.isDestroyed()) return;
+  m.win.focus();
+  if (!rect || !image || !folder()) return;
+  const scale = image.getSize().width / bounds.width;
+  const px = (v) => Math.round(v * scale);
+  const url = store.saveImage(folder(), image.crop({ x: px(rect.x), y: px(rect.y), width: px(rect.width), height: px(rect.height) }).toPNG(), '.png');
+  m.win.webContents.send('shot', url, Math.round(rect.width));
+}
+
 // ---- 탭에 마우스를 올리면 잠깐 뜨는 메모 ----
 let peeked = null;
 let peekTimer;
@@ -606,6 +662,13 @@ ipcMain.handle('memo-fit', (e, w, h) => {
   slide(shown.map((x, i) => ({ m: x, to: boxes[i] })));
   setTimeout(saveOpen, 200);
 });
+
+ipcMain.handle('shot-start', (e) => {
+  const m = find(e);
+  if (m) return startShot(m);
+});
+ipcMain.handle('shot-image', () => shot?.image.toDataURL());
+ipcMain.handle('shot-done', (_e, rect) => endShot(rect));
 
 ipcMain.handle('open-link', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);

@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('memo', {
   saveImage: call('save-image'),
   onForget: (fn) => ipcRenderer.on('forget', fn),
   fit: call('memo-fit'),
+  shot: call('shot-start'),
+  onShot: (fn) => ipcRenderer.on('shot', (_e, url, width) => fn(url, width)),
   resize: call('memo-resize'),
 });
 
@@ -46,4 +48,10 @@ contextBridge.exposeInMainWorld('memoList', {
   restore: call('list-restore'),
   folder: call('list-folder'),
   onData: (fn) => ipcRenderer.on('list-data', (_e, d) => fn(d)),
+});
+
+// 스크린샷 영역 고르는 창
+contextBridge.exposeInMainWorld('shot', {
+  image: call('shot-image'),
+  done: call('shot-done'),
 });

@@ -398,6 +398,19 @@ addEventListener('focus', () => active(true));
 addEventListener('blur', () => active(false));
 active(document.hasFocus());
 
+// ---- 스크린샷 ----
+$('b-shot').onclick = async () => { await flush(); memo.shot(); };
+
+// 고른 영역이 커서 자리에 들어오고, 메모가 사진 크기에 맞춰진다
+memo.onShot(async (url, width) => {
+  ed.focus();
+  if (!ed.contains(getSelection().anchorNode)) caretEnd(ed);
+  document.execCommand('insertHTML', false, `<img src="${url}" style="width:${Math.min(width, FIT_WIDTH - 40)}px"><div><br></div>`);
+  await Promise.all([...ed.querySelectorAll('img')].map((i) => i.decode().catch(() => {})));
+  await flush();
+  fitToContent();
+});
+
 // ---- 시작 ----
 async function init() {
   const s = await memo.state();

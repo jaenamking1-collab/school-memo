@@ -1,0 +1,20 @@
+<meta charset="utf-8" />
+<title>스크린샷</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: crosshair; user-select: none; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; -webkit-user-drag: none; }
+  #dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); }
+  /* 고른 곳만 밝게: 바깥을 그림자로 어둡게 덮는다 */
+  #box { position: fixed; display: none; outline: 2px solid #4c8bf5; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .3); }
+  #hint {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    padding: 6px 14px; border-radius: 6px; background: #3a3320; color: #fffbe0;
+    font: 14px "Malgun Gothic", "맑은 고딕", sans-serif;
+  }
+</style>
+<img id="bg" alt="" />
+<div id="dim"></div>
+<div id="box"></div>
+<div id="hint">끌어서 영역을 고르세요 · Esc 취소</div>
+<script src="shot.js"></script>
