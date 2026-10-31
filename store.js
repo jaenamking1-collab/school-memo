@@ -8,7 +8,8 @@ const fileNameFor = require('./name');
 // 앱이 그걸 메모로 착각해서 열거나 덮어쓰지 않는다.
 const MARK = '<!--memo';
 const DEFAULT_COLOR = '#fdf07a';
-const header = (color) => `${MARK} color=${/^#[0-9a-fA-F]{3,8}$/.test(color || '') ? color : DEFAULT_COLOR}-->`;
+// auto 는 제목을 적지 않아 본문 첫 글로 이름을 지은 메모. 본문이 바뀌면 이름도 따라 바뀐다.
+const header = (color, auto) => `${MARK} color=${/^#[0-9a-fA-F]{3,8}$/.test(color || '') ? color : DEFAULT_COLOR}${auto ? ' auto' : ''}-->`;
 
 const IMAGE_EXT = /^\.(png|jpe?g|gif|webp|bmp)$/i;
 
@@ -53,13 +54,15 @@ function uniquify(f, next, self) {
 exports.MARK = MARK;
 exports.DEFAULT_COLOR = DEFAULT_COLOR;
 
-exports.list = (f) =>
+// 메모 이름과 마지막 저장 시각. 최근 것부터.
+exports.listAt = (f) =>
   fs
     .readdirSync(f)
     .filter((n) => n.endsWith('.html') && isMemo(path.join(f, n)))
     .map((n) => ({ name: n, at: fs.statSync(path.join(f, n)).mtimeMs }))
-    .sort((a, b) => b.at - a.at)
-    .map((x) => x.name);
+    .sort((a, b) => b.at - a.at);
+
+exports.list = (f) => exports.listAt(f).map((x) => x.name);
 
 exports.read = (f, name) => {
   const raw = fs.readFileSync(inside(f, name), 'utf8');
@@ -68,16 +71,17 @@ exports.read = (f, name) => {
   return {
     html: toScreen(f, nl < 0 ? '' : raw.slice(nl + 1)),
     color: (first.match(/color=(#[0-9a-fA-F]{3,8})/) || [])[1] || DEFAULT_COLOR,
+    auto: / auto-->/.test(first),
   };
 };
 
-exports.save = (f, name, title, html, color) => {
+exports.save = (f, name, title, html, color, auto) => {
   if (name) inside(f, name);
   const next = uniquify(f, fileNameFor(title), name);
   if (name && name !== next && fs.existsSync(inside(f, name))) {
     fs.renameSync(inside(f, name), inside(f, next));
   }
-  fs.writeFileSync(inside(f, next), header(color) + '\n' + toDisk(f, String(html)), 'utf8');
+  fs.writeFileSync(inside(f, next), header(color, auto) + '\n' + toDisk(f, String(html)), 'utf8');
   return next;
 };
 

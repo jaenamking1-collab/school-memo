@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const ed = $('ed'), title = $('title'), items = $('items');
+const ed = $('ed'), title = $('title');
 let current = null; // 지금 열린 파일명. 새 메모면 null
 let color = '#fdf07a';
 let sel = null; // 고른 사진
@@ -12,16 +12,24 @@ const setColor = (hex) => {
 // ---- 저장 ----
 const empty = () => !title.textContent.trim() && !ed.textContent.trim() && !ed.querySelector('img');
 
+// 제목을 안 적었으면 본문의 첫 글이 제목 노릇을 한다
+const firstLine = () => (ed.innerText.split('\n').map((s) => s.trim()).find(Boolean) || '').slice(0, 30);
+const shownTitle = () => title.textContent.trim() || firstLine();
+const showAuto = () => { title.dataset.auto = firstLine() || '제목'; };
+
 async function save() {
   if (empty()) return;
-  current = await memo.save(current, title.textContent, ed.innerHTML, color);
-  memo.setDoc(current, title.textContent.trim(), color); // 화면 끝 탭도 같이 바뀐다
+  const t = shownTitle();
+  // 사진만 있는 메모는 이름 지을 글이 없다. 저장할 때마다 시각으로 이름이 바뀌지 않게 지금 이름을 둔다.
+  current = await memo.save(current, t || current?.replace(/\.html$/i, '') || '', ed.innerHTML, color, !title.textContent.trim());
+  memo.setDoc(current, t, color); // 화면 끝 탭도 같이 바뀐다
 }
 
 let timer;
 const touch = () => {
   clearTimeout(timer);
   timer = setTimeout(save, 500);
+  showAuto();
 };
 ed.addEventListener('input', touch);
 title.addEventListener('input', touch);
@@ -39,93 +47,35 @@ memo.onColor((hex) => { setColor(hex); flush(); });
 
 function show(name, doc) {
   current = name;
-  title.textContent = name ? name.replace(/\.html$/i, '') : '';
+  title.textContent = name && !doc?.auto ? name.replace(/\.html$/i, '') : '';
   ed.innerHTML = doc?.html || '';
   linkify(); // 링크 기능 생기기 전에 적어둔 주소도 열 때 바로 링크가 된다
   setColor(doc?.color || '#fdf07a');
   unselect();
-  memo.setDoc(name, title.textContent, color);
+  showAuto();
+  memo.setDoc(name, shownTitle(), color);
 }
 
-function closePanel() {
-  $('panel').hidden = true;
-  $('b-list').classList.remove('on');
-}
-
-// ---- 목록 ----
-async function refresh() {
-  const names = await memo.list();
-  items.innerHTML = '';
-  for (const n of names) {
-    const row = document.createElement('div');
-    row.className = 'item' + (n === current ? ' on' : '');
-    row.innerHTML = '<span class="nm"></span><button title="이름 바꾸기">✎</button><button title="삭제">🗑</button>';
-    const nm = row.querySelector('.nm');
-    nm.textContent = n.replace(/\.html$/i, '');
-    row.onclick = async () => {
-      if (nm.isContentEditable) return;
-      if (n === current) return closePanel();
-      await flush();
-      // 다른 포스트잇이 이미 그 메모를 열어뒀으면 그 창을 꺼낸다
-      if (!(await memo.claim(n))) return closePanel();
-      show(n, await memo.read(n));
-      closePanel(); // 제목을 누르면 바로 편집 화면으로
-    };
-    row.querySelectorAll('button')[0].onclick = (e) => { e.stopPropagation(); startRename(nm, n); };
-    nm.ondblclick = (e) => { e.stopPropagation(); startRename(nm, n); };
-    row.querySelectorAll('button')[1].onclick = async (e) => {
-      e.stopPropagation();
-      if (!confirm(nm.textContent + ' 을(를) 지울까요?')) return;
-      await memo.remove(n);
-      if (n === current) show(null, null);
-      refresh();
-    };
-    items.append(row);
-  }
-}
-
-function startRename(nm, n) {
-  const before = nm.textContent;
-  nm.contentEditable = 'true';
-  nm.focus();
-  document.execCommand('selectAll', false, null);
-  const done = async (ok) => {
-    nm.contentEditable = 'false';
-    const next = nm.textContent.trim();
-    if (!ok || !next || next === before) { nm.textContent = before; return; }
-    const saved = await memo.rename(n, next);
-    if (n === current) { current = saved; title.textContent = next; memo.setDoc(saved, next, color); }
-    refresh();
-  };
-  nm.onblur = () => done(true);
-  nm.onkeydown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); nm.blur(); }
-    if (e.key === 'Escape') { nm.onblur = null; done(false); nm.blur(); }
-  };
-}
-
-$('b-list').onclick = async () => {
-  const p = $('panel');
-  if (!p.hidden) return closePanel();
-  await flush();
-  await refresh();
-  p.hidden = false;
-  $('b-list').classList.add('on');
-};
+$('b-list').onclick = async () => { await flush(); memo.openList(); };
 // 새 메모는 지금 포스트잇을 덮어쓰지 않고 새 포스트잇(스티커)으로 뜬다
 $('b-new').onclick = async () => {
   await flush();
-  closePanel();
   memo.newMemo();
 };
 
 // ---- 창 ----
 $('b-color').onclick = () => memo.colorMenu();
 $('b-hide').onclick = async () => { await flush(); memo.hide(); };
-$('b-pin').onclick = async () => {
-  const v = await memo.pin(!$('b-pin').classList.contains('on'));
-  $('b-pin').classList.toggle('on', v);
-};
+// 목록에서 지운 메모. 창이 닫힐 때 다시 저장하지 않게 비워둔다.
+memo.onForget(() => {
+  clearTimeout(timer);
+  current = null;
+  title.textContent = ed.innerHTML = '';
+});
+
+// 탭에 마우스를 올려 띄운 메모로 넘어와 있는 동안은 닫지 않는다
+document.documentElement.addEventListener('mouseenter', () => memo.hover(true));
+document.documentElement.addEventListener('mouseleave', () => memo.hover(false));
 
 // ---- 사진 ----
 async function insertImage(file) {
@@ -175,7 +125,21 @@ function linkify() {
 ed.addEventListener('blur', () => { linkify(); touch(); });
 
 ed.addEventListener('dragover', (e) => e.preventDefault());
+// 본문 안의 사진을 끌면 브라우저가 파일처럼 넘겨서, 그대로 두면 새 사진으로 복사된다. 직접 옮긴다.
+let dragging = null;
+ed.addEventListener('dragstart', (e) => { if (e.target.tagName === 'IMG') dragging = e.target; });
+ed.addEventListener('dragend', () => { dragging = null; });
+
 ed.addEventListener('drop', (e) => {
+  if (dragging) {
+    e.preventDefault();
+    const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+    if (r) r.insertNode(dragging);
+    dragging = null;
+    place();
+    touch();
+    return;
+  }
   const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
   if (!f) return; // 글자나 사진 옮기기는 브라우저 기본 동작에 맡긴다
   e.preventDefault();
@@ -243,7 +207,6 @@ $('tools').onclick = (e) => {
 // ---- 시작 ----
 async function init() {
   const s = await memo.state();
-  $('b-pin').classList.toggle('on', s.pinned);
   if (!s.folder) return;
   const open = new URLSearchParams(location.search).get('open');
   if (!open) return;

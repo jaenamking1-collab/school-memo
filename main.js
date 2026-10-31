@@ -2,13 +2,15 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
+const { freeSpot, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
-const DOCK_W = 58;
-const PAD = 3;
+const DOCK_W = 62;
+const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
+const LIST = { width: 270, height: 480 }; // 메모 목록 창 (그림자 여백 포함)
 const SIZE = { width: 270, height: 215 }; // 기본 포스트잇 (가로로 누운 직사각형)
 
 const COLORS = [
@@ -20,7 +22,7 @@ const COLORS = [
   ['주황', '#ffd7a0'],
 ];
 
-// ---- 설정: 폴더 경로, 탭 위치, 포스트잇 크기, 항상 위, 열어둔 메모 ----
+// ---- 설정: 폴더 경로, 탭 위치, 정렬, 열어둔 메모(자리·크기 포함) ----
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = {};
 
@@ -36,6 +38,7 @@ function loadSettings() {
     dialog.showErrorBox('메모', '설정 파일을 읽지 못해 settings.json.bad 로 옮겼습니다.\n저장 폴더를 다시 골라주세요.\n\n' + e.message);
   }
   delete settings.bounds; // 예전 버전이 쓰던 값
+  delete settings.size;
 }
 
 function saveSettings() {
@@ -67,10 +70,15 @@ let memos = []; // [{ win, name, title }] 띄워둔 포스트잇들
 const find = (e) => memos.find((m) => m.win.webContents.id === e.sender.id);
 
 // ---- 탭 줄 ----
-const tabbed = () => memos.filter((m) => m.win.isVisible() || m.pinned);
+// 고른 정렬 순서대로. 저장 전인 새 메모는 at 이 없어 최근순 맨 위에 온다.
+function tabbed() {
+  const at = new Map((folder() ? store.listAt(folder()) : []).map((x) => [x.name, x.at]));
+  const rows = memos.map((m) => ({ m, title: m.title || '', at: at.get(m.name) }));
+  return sortMemos(rows, settings.order).map((x) => x.m);
+}
 
 function dockHeight() {
-  return (tabbed().length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
+  return (memos.length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
 }
 
 // 화면 끝 가까이 가면 딱 붙인다
@@ -95,7 +103,7 @@ function updateDock() {
   dock.webContents.send('tabs', {
     // 북마크의 파인 쪽이 화면 안쪽(벽 반대편)을 보도록
     side: p.x + DOCK_W / 2 < wa.x + wa.width / 2 ? 'left' : 'right',
-    // 떠 있는 것 + 고정해둔 것만 탭에 남는다. 고정 안 한 걸 최소화하면 아예 사라진다.
+    // 최소화한 것도 흐리게 탭에 남는다
     tabs: tabbed()
       .map((m) => ({
         id: m.win.webContents.id,
@@ -104,8 +112,12 @@ function updateDock() {
         on: m.win.isVisible(),
       })),
   });
-  settings.open = memos.map((m) => ({ name: m.name, pinned: m.pinned, hidden: !m.win.isVisible() }));
   settings.dock = { x: p.x, y: p.y };
+  saveOpen();
+}
+
+function saveOpen() {
+  settings.open = memos.map((m) => ({ name: m.name, hidden: !m.win.isVisible(), bounds: m.win.getBounds() }));
   saveSettings();
 }
 
@@ -131,39 +143,34 @@ function createDock() {
   dock.webContents.once('did-finish-load', updateDock);
 }
 
-// 탭 줄에서 시작해 아래로, 자리가 없으면 옆 칸으로 — 이미 떠 있는 포스트잇과 겹치지 않는 첫 자리.
-function positionMemo(m) {
-  const d = dock.getBounds();
-  const wa = workArea(d);
-  const { width: w, height: h } = { ...SIZE, ...settings.size };
-  const onLeft = d.x + d.width / 2 < wa.x + wa.width / 2;
-  const spot = (c, r) => ({
-    width: w,
-    height: h,
-    x: clamp(onLeft ? d.x + d.width + GAP + c * (w + GAP) : d.x - (c + 1) * (w + GAP), wa.x, wa.x + wa.width - w),
-    y: clamp(d.y + PAD + Math.max(0, tabbed().indexOf(m)) * TAB_H + r * (h + GAP), wa.y, wa.y + wa.height - h),
-  });
-
-  const others = memos.filter((x) => x !== m && x.win.isVisible()).map((x) => x.win.getBounds());
-  const overlaps = (a) =>
-    others.some((b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height);
-
-  const cols = Math.max(1, Math.floor((onLeft ? wa.x + wa.width - d.x - d.width : d.x - wa.x) / (w + GAP)));
-  const rows = Math.max(1, Math.ceil(wa.height / (h + GAP)));
-  for (let c = 0; c < cols; c++) {
-    for (let r = 0; r < rows; r++) {
-      const box = spot(c, r);
-      if (!overlaps(box)) return m.win.setBounds(box);
-    }
-  }
-  m.win.setBounds(spot(0, 0)); // 화면이 다 찼으면 첫 자리
+// 펼칠 방향: 화면 오른쪽에 있으면 왼쪽으로, 왼쪽에 있으면 오른쪽으로
+function direction(b) {
+  const wa = workArea(b);
+  return b.x + b.width / 2 < wa.x + wa.width / 2 ? 1 : -1;
 }
 
-function createMemo(openName) {
-  const { width, height } = { ...SIZE, ...settings.size };
+// 포스트잇이 하나도 안 떠 있을 때의 기준 자리: 탭 줄 바로 옆
+function dockAnchor(width) {
+  const d = dock.getBounds();
+  return { x: direction(d) < 0 ? d.x - GAP - width : d.x + d.width + GAP, y: d.y, width, height: 0 };
+}
+
+function placeNear(m, from) {
+  const others = [dock, ...memos.filter((x) => x !== m && x.win.isVisible()).map((x) => x.win)].map((w) => w.getBounds());
+  const { width, height } = m.win.getBounds();
+  m.win.setBounds(freeSpot(from, { width, height, gap: GAP }, workArea(from), others, direction(from)));
+}
+
+// 새 메모의 기준: 가장 나중에 연 포스트잇
+function anchorFor(m) {
+  const last = memos.filter((x) => x !== m && x.win.isVisible()).pop();
+  return last ? last.win.getBounds() : dockAnchor(m.win.getBounds().width);
+}
+
+// opts.from: 이 자리 근처에 놓는다 / opts.bounds: 껐다 켰을 때 원래 자리·크기로 되살린다 / opts.hidden: 탭만 남긴다
+function createMemo(openName, opts = {}) {
   const win = new BrowserWindow({
-    width,
-    height,
+    ...SIZE,
     minWidth: 200,
     minHeight: 160,
     frame: false,
@@ -174,27 +181,22 @@ function createMemo(openName) {
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js') },
   });
-  const m = { win, name: openName || null, title: '', color: store.DEFAULT_COLOR, pinned: false };
+  const m = { win, name: openName || null, title: '', color: store.DEFAULT_COLOR };
   memos.push(m);
 
   win.loadFile('index.html', { query: openName ? { open: openName } : {} });
   win.once('ready-to-show', () => {
-    positionMemo(m);
-    win.show();
+    if (opts.bounds) {
+      const b = opts.bounds, wa = workArea(b); // 모니터를 뺐으면 남은 화면 안으로 들어온다
+      win.setBounds({ ...b, x: clamp(b.x, wa.x, wa.x + wa.width - b.width), y: clamp(b.y, wa.y, wa.y + wa.height - b.height) });
+    } else placeNear(m, opts.from || anchorFor(m));
+    if (!opts.hidden) win.show();
     updateDock();
   });
 
-  let t;
-  win.on('resized', () => {
-    clearTimeout(t);
-    t = setTimeout(() => {
-      if (!win.isDestroyed()) {
-        const b = win.getBounds();
-        settings.size = { width: b.width, height: b.height };
-        saveSettings();
-      }
-    }, 500);
-  });
+  win.on('resized', saveOpen);
+  win.on('moved', saveOpen);
+  win.on('focus', () => { if (peeked === m) peeked = null; }); // 눌러서 쓰기 시작하면 계속 떠 있는다
 
   win.on('closed', () => {
     memos = memos.filter((x) => x !== m);
@@ -205,9 +207,12 @@ function createMemo(openName) {
 
 // 탭을 누르면 그 메모가 나온다. 이미 떠 있으면 앞으로 꺼내기만 한다 (숨기면 탭이 없어져 못 찾는다).
 function showMemo(m) {
+  if (peeked === m) peeked = null;
   if (m.win.isVisible()) m.win.focus();
   else {
-    positionMemo(m);
+    // 최소화했던 자리가 그 사이 다른 메모로 찼으면 빈자리로 옮긴다
+    const b = m.win.getBounds();
+    if (memos.some((x) => x !== m && x.win.isVisible() && hits(b, x.win.getBounds()))) placeNear(m, anchorFor(m));
     m.win.show();
     m.win.focus();
   }
@@ -244,12 +249,82 @@ function memoItems() {
   });
 }
 
-function listMenu() {
-  Menu.buildFromTemplate([
-    { label: '+ 새 메모', click: () => createMemo(null) },
-    { type: 'separator' },
-    ...memoItems(),
-  ]).popup({ window: dock });
+// 고른 순서대로 탭 줄 옆부터 떠 있는 포스트잇을 다시 늘어놓는다
+function arrange() {
+  const others = [dock.getBounds()];
+  const dir = direction(dock.getBounds());
+  let from = null;
+  for (const m of tabbed().filter((x) => x.win.isVisible())) {
+    const { width, height } = m.win.getBounds();
+    from = from || dockAnchor(width);
+    const box = freeSpot(from, { width, height, gap: GAP }, workArea(from), others, dir);
+    m.win.setBounds(box);
+    others.push(box);
+    from = box;
+  }
+  saveOpen();
+}
+
+function setOrder(order) {
+  settings.order = order;
+  updateDock();
+  arrange();
+  if (listWin) listWin.webContents.send('list-data', listData());
+}
+
+// ---- 메모 목록 창: 누른 곳 옆으로 펼쳐진다 ----
+let listWin = null;
+let listClosedAt = 0;
+let listSide = 'left';
+
+function listData() {
+  const f = folder();
+  const rows = (f ? store.listAt(f) : []).map(({ name, at }) => {
+    const open = memos.find((x) => x.name === name);
+    return { name, at, title: name.replace(/\.html$/i, ''), color: store.read(f, name).color, open: !!open && open.win.isVisible() };
+  });
+  return { order: settings.order || 'recent', side: listSide, items: sortMemos(rows, settings.order) };
+}
+
+function openList(from) {
+  if (listWin) return listWin.close();
+  // 목록이 열린 채 그 버튼을 누르면 포커스를 잃어 먼저 닫힌다. 바로 다시 열지 않는다.
+  if (Date.now() - listClosedAt < 400) return;
+  const wa = workArea(from);
+  const height = Math.min(LIST.height, wa.height);
+  listSide = direction(from) < 0 ? 'left' : 'right';
+  const x = listSide === 'left' ? from.x - LIST.width : from.x + from.width;
+  listWin = new BrowserWindow({
+    x: clamp(x, wa.x, wa.x + wa.width - LIST.width),
+    y: clamp(from.y, wa.y, wa.y + wa.height - height),
+    width: LIST.width,
+    height,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  });
+  listWin.setAlwaysOnTop(true, 'screen-saver'); // 탭 줄보다 아래로 깔리지 않게
+  listWin.loadFile('list.html');
+  listWin.on('blur', () => listWin && listWin.close());
+  listWin.on('closed', () => {
+    listWin = null;
+    listClosedAt = Date.now();
+  });
+}
+
+// ---- 탭에 마우스를 올리면 잠깐 뜨는 메모 ----
+let peeked = null;
+let peekTimer;
+function endPeekSoon() {
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => {
+    if (peeked && !peeked.win.isDestroyed()) peeked.win.hide();
+    peeked = null;
+  }, 300);
 }
 
 // 탭 줄에서도, 포스트잇 위에서도 같은 메뉴를 쓴다
@@ -257,6 +332,13 @@ function popupMenu(m) {
   const items = [
     { label: '새 메모', click: () => createMemo(null) },
     { label: '메모 목록', submenu: memoItems() },
+    {
+      label: '메모 정렬',
+      submenu: [['최근순', 'recent'], ['이름순', 'name']].map(([label, order]) => ({
+        label,
+        click: () => setOrder(order),
+      })),
+    },
     { type: 'separator' },
   ];
   if (m) {
@@ -326,10 +408,7 @@ if (!app.requestSingleInstanceLock()) {
     const open = (settings.open || []).filter((o) => o.name);
     if (open.length) {
       open.forEach((o) => {
-        const m = createMemo(o.name);
-        m.pinned = !!o.pinned;
-        // 고정해서 최소화해둔 것은 탭만 남긴 채로 되살린다
-        if (o.hidden && m.pinned) m.win.once('ready-to-show', () => (m.win.hide(), updateDock()));
+        createMemo(o.name, { bounds: o.bounds, hidden: o.hidden });
       });
     } else {
       createMemo((folder() && store.list(folder())[0]) || null);
@@ -347,13 +426,17 @@ app.on('web-contents-created', (_e, wc) => {
 });
 
 // ---- 탭 줄 ----
-let dragFrom;
-ipcMain.handle('dock-drag-start', () => (dragFrom = dock.getBounds()));
+let dragFrom, dragMemos;
+ipcMain.handle('dock-drag-start', () => {
+  dragMemos = memos.filter((m) => m.win.isVisible()).map((m) => ({ m, b: m.win.getBounds() }));
+  return (dragFrom = dock.getBounds());
+});
 ipcMain.handle('dock-drag', (_e, dx, dy) => {
   if (!dragFrom) return; // dragStart 가 아직 안 왔으면 무시
   const p = snapToEdge(dragFrom.x + dx, dragFrom.y + dy);
   dock.setPosition(p.x, p.y);
-  memos.forEach((m) => m.win.isVisible() && positionMemo(m)); // 펼쳐둔 건 같이 따라온다
+  // 펼쳐둔 건 늘어놓은 모양 그대로 같이 따라온다
+  dragMemos.forEach(({ m, b }) => m.win.setPosition(b.x + p.x - dragFrom.x, b.y + p.y - dragFrom.y));
 });
 ipcMain.handle('dock-drag-end', () => {
   const b = dock.getBounds();
@@ -364,22 +447,36 @@ ipcMain.handle('dock-tab', (_e, id) => {
   const m = memos.find((x) => x.win.webContents.id === id);
   if (m) showMemo(m);
 });
-ipcMain.handle('new-memo', () => createMemo(null)); // 탭 줄의 + 와 목록의 + 새 메모 둘 다 쓴다
-ipcMain.handle('dock-list', listMenu);
+ipcMain.handle('dock-peek', (_e, id) => {
+  clearTimeout(peekTimer);
+  if (peeked && peeked.win.webContents.id !== id) { peeked.win.hide(); peeked = null; }
+  const m = memos.find((x) => x.win.webContents.id === id);
+  if (!m) return;
+  if (m.win.isVisible()) return m.win.moveTop();
+  peeked = m;
+  m.win.showInactive(); // 쓰던 창의 커서를 빼앗지 않는다
+});
+ipcMain.handle('dock-unpeek', endPeekSoon);
+ipcMain.handle('memo-hover', (e, on) => {
+  if (!peeked || peeked !== find(e)) return;
+  if (on) clearTimeout(peekTimer);
+  else endPeekSoon();
+});
+// 포스트잇의 + 는 그 메모 근처에, 탭 줄의 + 는 가장 나중에 연 메모 근처에 나온다
+ipcMain.handle('new-memo', (e) => createMemo(null, { from: find(e)?.win.getBounds() }));
+ipcMain.handle('dock-list', () => openList(dock.getBounds()));
 ipcMain.handle('dock-menu', () => popupMenu(null));
 
 // ---- 포스트잇 ----
-ipcMain.handle('state', (e) => ({ folder: folder(), pinned: !!find(e)?.pinned }));
-// 최소화: 고정한 것만 탭에 남기고 숨긴다. 고정 안 했으면 아예 닫는다 (내용은 이미 파일에 있다).
+ipcMain.handle('state', () => ({ folder: folder() }));
+// 최소화: 탭에 남기고 숨긴다. 아무것도 안 적은 새 메모는 남길 게 없으니 닫는다.
 ipcMain.handle('hide', (e) => {
   const m = find(e);
   if (!m) return;
-  if (m.pinned) {
-    m.win.hide();
-    updateDock();
-  } else {
-    m.win.close();
-  }
+  if (!m.name) return m.win.close();
+  if (peeked === m) peeked = null;
+  m.win.hide();
+  updateDock();
 });
 ipcMain.handle('menu', (e) => popupMenu(find(e)));
 ipcMain.handle('color-menu', (e) => {
@@ -387,25 +484,9 @@ ipcMain.handle('color-menu', (e) => {
   if (m) Menu.buildFromTemplate(colorItems(m)).popup({ window: m.win });
 });
 
-// 고정: 최소화해도 오른쪽 탭에 제목이 남는다
-ipcMain.handle('pin', (e, v) => {
-  const m = find(e);
-  if (m) m.pinned = v;
-  updateDock();
-  return v;
-});
-
 // 메모 안의 링크는 기본 브라우저로 연다
 ipcMain.handle('open-link', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
-});
-
-// 같은 메모를 두 창에서 열면 서로 덮어쓴다. 이미 열려 있으면 그 창을 앞으로 꺼낸다.
-ipcMain.handle('claim', (e, name) => {
-  const other = memos.find((m) => m.name === name && m.win.webContents.id !== e.sender.id);
-  if (!other) return true;
-  showMemo(other);
-  return false;
 });
 
 ipcMain.handle('set-doc', (e, name, title, color) => {
@@ -421,9 +502,35 @@ ipcMain.handle('set-doc', (e, name, title, color) => {
 });
 
 const inFolder = (fn) => (_e, ...a) => (folder() ? fn(folder(), ...a) : null);
-ipcMain.handle('list', () => (folder() ? store.list(folder()) : []));
 ipcMain.handle('read', inFolder(store.read));
 ipcMain.handle('save', inFolder(store.save));
-ipcMain.handle('rename', inFolder(store.rename));
-ipcMain.handle('delete', inFolder(store.remove));
 ipcMain.handle('save-image', inFolder(store.saveImage));
+
+// ---- 메모 목록 창 ----
+ipcMain.handle('open-list', (e) => {
+  const m = find(e);
+  if (m) openList(m.win.getBounds());
+});
+ipcMain.handle('list-data', listData);
+// 같은 메모를 두 창에서 열면 서로 덮어쓴다. 이미 열려 있으면 그 창을 앞으로 꺼낸다.
+ipcMain.handle('list-open', (_e, name) => {
+  const open = memos.find((m) => m.name === name);
+  if (open) showMemo(open);
+  else createMemo(name);
+  listWin?.close();
+});
+ipcMain.handle('list-new', () => {
+  createMemo(null);
+  listWin?.close();
+});
+ipcMain.handle('list-order', (_e, order) => setOrder(order === 'name' ? 'name' : 'recent'));
+ipcMain.handle('list-remove', (_e, name) => {
+  const open = memos.find((m) => m.name === name);
+  if (open) open.win.webContents.send('forget');
+  // 창이 닫힐 때 저장해 버리지 않게, 비운 다음에 닫고 지운다
+  setTimeout(() => {
+    open?.win.close();
+    if (folder()) store.remove(folder(), name);
+    listWin?.webContents.send('list-data', listData());
+  }, 120);
+});

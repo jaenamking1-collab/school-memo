@@ -8,19 +8,17 @@ contextBridge.exposeInMainWorld('memo', {
   hide: call('hide'),
   menu: call('menu'),
   colorMenu: call('color-menu'),
-  pin: call('pin'),
   newMemo: call('new-memo'),
   openLink: call('open-link'),
-  claim: call('claim'),
   setDoc: call('set-doc'),
-  list: call('list'),
+  openList: call('open-list'),
+  hover: call('memo-hover'),
   read: call('read'),
   save: call('save'),
-  rename: call('rename'),
-  remove: call('delete'),
   saveImage: call('save-image'),
   onFolderChanged: (fn) => ipcRenderer.on('folder-changed', fn),
   onColor: (fn) => ipcRenderer.on('color', (_e, hex) => fn(hex)),
+  onForget: (fn) => ipcRenderer.on('forget', fn),
 });
 
 // 화면 끝 탭 줄
@@ -32,5 +30,17 @@ contextBridge.exposeInMainWorld('dock', {
   newMemo: call('new-memo'),
   list: call('dock-list'),
   menu: call('dock-menu'),
+  peek: call('dock-peek'),
+  unpeek: call('dock-unpeek'),
   onTabs: (fn) => ipcRenderer.on('tabs', (_e, tabs) => fn(tabs)),
+});
+
+// 메모 목록 창
+contextBridge.exposeInMainWorld('memoList', {
+  data: call('list-data'),
+  open: call('list-open'),
+  newMemo: call('list-new'),
+  order: call('list-order'),
+  remove: call('list-remove'),
+  onData: (fn) => ipcRenderer.on('list-data', (_e, d) => fn(d)),
 });

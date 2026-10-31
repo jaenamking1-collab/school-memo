@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
+const { freeSpot, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -63,6 +64,12 @@ assert.ok(store.list(f).includes('옛날.html'));
 assert.equal(store.read(f, '옛날.html').html, '<div>옛날</div>');
 assert.equal(store.read(f, '옛날.html').color, store.DEFAULT_COLOR);
 
+// 제목 없이 본문 첫 글로 이름을 지은 메모는 다시 열어도 그 표시가 남는다
+const au = store.save(f, null, '첫 줄', '<div>첫 줄</div>', store.DEFAULT_COLOR, true);
+assert.equal(store.read(f, au).auto, true);
+assert.equal(store.read(f, b).auto, false);
+store.remove(f, au);
+
 // 사진: 파일에는 상대경로, 화면에는 절대 file:// 주소
 const url = store.saveImage(f, Buffer.from([1, 2, 3]), '.png');
 assert.ok(url.startsWith('file:///') && url.endsWith('.png'));
@@ -102,4 +109,31 @@ store.remove(f, col);
 assert.ok(!store.list(f).includes(col));
 
 fs.rmSync(f, { recursive: true, force: true });
+
+// ---- 새 포스트잇 자리 ----
+const area = { x: 0, y: 0, width: 1000, height: 700 };
+const size = { width: 270, height: 215, gap: 4 };
+const box = (x, y, w = 270, h = 215) => ({ x, y, width: w, height: h });
+const overlap = (a, list) => list.some((o) => a.x < o.x + o.width && o.x < a.x + a.width && a.y < o.y + o.height && o.y < a.y + a.height);
+
+// 기준 메모 바로 아래가 첫 자리
+assert.deepEqual(freeSpot(box(700, 10), size, area, [box(700, 10)], -1), box(700, 229));
+// 아래가 다 찼으면 왼쪽 줄로
+let wall = [box(700, 10), box(700, 229), box(700, 448)];
+assert.deepEqual(freeSpot(wall[2], size, area, wall, -1), box(426, 0));
+// 왼쪽 벽에 붙어 있으면 반대(오른쪽)로 간다
+wall = [box(0, 10), box(0, 229), box(0, 448)];
+assert.deepEqual(freeSpot(wall[2], size, area, wall, 1), box(274, 0));
+// 크기가 제각각이어도 겹치지 않는다 (스샷: 넓은 메모 4개 + 새 메모)
+wall = [box(20, 25, 238, 215), box(260, 25, 238, 215), box(500, 25, 238, 215), box(740, 25, 238, 215)];
+assert.ok(!overlap(freeSpot(wall[3], size, area, wall, -1), wall));
+// 화면이 정말 꽉 차도 앞 메모와 똑같은 자리에 포개지 않는다
+const full = freeSpot(box(0, 0), size, area, [box(0, 0, 1000, 700)], -1);
+assert.notDeepEqual([full.x, full.y], [0, 0]);
+
+// 정렬
+const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];
+assert.deepEqual(sortMemos(ms, 'name').map((x) => x.title), ['가', '나', '다']);
+assert.deepEqual(sortMemos(ms, 'recent').map((x) => x.title), ['나', '가', '다']);
+
 console.log('ok');

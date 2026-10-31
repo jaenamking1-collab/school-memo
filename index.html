@@ -34,7 +34,7 @@
     border-radius: 3px;
   }
   #title:focus { background: rgba(255, 255, 255, .7); }
-  #title:empty::before { content: '제목'; opacity: .45; }
+  #title:empty::before { content: attr(data-auto); opacity: .45; } /* 제목을 안 적으면 본문 첫 글을 보여준다 */
   #sp { flex: 1; align-self: stretch; } /* 창을 끄는 빈 자리 */
   #hd button {
     -webkit-app-region: no-drag;
@@ -75,28 +75,15 @@
   }
   #tools button { border: 0; background: #555; color: #fff; font-size: 12px; padding: 3px 7px; border-radius: 3px; cursor: pointer; }
   #tools button:hover { background: #4c8bf5; }
-
-  /* 메모 목록 */
-  #panel { position: absolute; inset: 0; background: rgba(255, 255, 255, .93); display: flex; flex-direction: column; z-index: 10; }
-  #panel > button { margin: 6px 8px 4px; padding: 6px; border: 1px dashed rgba(0, 0, 0, .25); background: var(--bg); border-radius: 4px; cursor: pointer; font: inherit; }
-  #items { flex: 1; overflow: auto; }
-  .item { display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 11px; cursor: pointer; }
-  .item:hover { background: rgba(0, 0, 0, .06); }
-  .item.on { background: rgba(0, 0, 0, .12); }
-  .item .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item .nm[contenteditable='true'] { user-select: text; background: #fff; outline: 1px solid #4c8bf5; border-radius: 3px; padding: 0 3px; }
-  .item button { border: 0; background: transparent; cursor: pointer; opacity: 0; font-size: 13px; padding: 2px 4px; }
-  .item:hover button { opacity: .6; }
-  .item button:hover { opacity: 1; }
 </style>
 
 <div id="hd">
-  <div id="title" contenteditable spellcheck="false"></div>
+  <div id="title" contenteditable spellcheck="false" data-auto="제목"></div>
   <div id="sp"></div>
+  <button id="b-new" title="새 메모">+</button>
   <button id="b-color" title="포스트잇 색 바꾸기">🎨</button>
   <button id="b-list" title="메모 목록">☰</button>
-  <button id="b-pin" title="고정 (최소화해도 화면 끝 탭에 제목이 남습니다)">📌</button>
-  <button id="b-hide" title="최소화">─</button>
+  <button id="b-hide" title="최소화 (화면 끝 탭에 남습니다)">─</button>
 </div>
 
 <div id="wrap">
@@ -106,10 +93,6 @@
     <button data-a="border">테두리</button>
     <button data-a="reset">원래 크기</button>
     <button data-a="del">삭제</button>
-  </div>
-  <div id="panel" hidden>
-    <button id="b-new">+ 새 메모</button>
-    <div id="items"></div>
   </div>
 </div>
 

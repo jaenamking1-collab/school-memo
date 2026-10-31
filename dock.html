@@ -3,18 +3,24 @@
 <style>
   /* 탭 높이 26 + 틈 4 = main.js 의 TAB_H(30) 과 맞춰야 한다 */
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
-  body { padding: 3px; box-sizing: border-box; font: 12px/1 "Malgun Gothic", "맑은 고딕", sans-serif; }
-  /* 탭: 북마크를 옆으로 누인 모양. 파인 쪽이 화면 안쪽을 본다.
-     clip-path 는 border/box-shadow 를 잘라내므로 그림자는 filter 로 준다. */
+  /* 화면 안쪽 여백은 그림자 자리다. main.js 의 DOCK_W·PAD 와 맞춘다 */
+  body { padding: 5px 0 5px 9px; box-sizing: border-box; font: 12px/1 "Malgun Gothic", "맑은 고딕", sans-serif; }
+  /* clip-path 는 자기 그림자까지 잘라낸다. 그림자는 탭을 감싼 #d 에 준다. */
+  #d { filter: drop-shadow(-2px 2px 3px rgba(0, 0, 0, .55)); }
+  body.left #d { filter: drop-shadow(2px 2px 3px rgba(0, 0, 0, .55)); }
+  /* 탭: 북마크를 옆으로 누인 모양. 파인 쪽이 화면 안쪽을 본다. */
   .tab {
     height: 26px; margin-bottom: 4px;
     display: flex; align-items: center;
-    background: rgba(253, 240, 122, .5);
+    background: #fdf07a;
     color: #4a4012;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     cursor: pointer;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+    transition: transform .1s ease-out;
   }
+  .tab:hover { transform: translateX(-3px); }
+  body.left { padding: 5px 9px 5px 0; }
+  body.left .tab:hover { transform: translateX(3px); }
   /* 탭 줄이 화면 오른쪽에 있을 때 — 왼쪽 끝이 파인다 */
   .tab { padding: 0 4px 0 14px; clip-path: polygon(0 50%, 9px 0, 100% 0, 100% 100%, 9px 100%); }
   /* 왼쪽에 있을 때 — 오른쪽 끝이 파인다 */
@@ -90,4 +96,20 @@
   });
 
   d.addEventListener('contextmenu', () => dock.menu());
+
+  // 탭에 마우스를 잠깐 올리면 그 메모가 뜬다. 스치기만 해서는 안 뜬다.
+  let over, wait;
+  d.addEventListener('mouseover', (e) => {
+    const id = e.target.closest('.tab')?.dataset.id;
+    if (id === over) return;
+    if (over) dock.unpeek();
+    over = id;
+    clearTimeout(wait);
+    if (id) wait = setTimeout(() => dock.peek(Number(id)), 150);
+  });
+  d.addEventListener('mouseleave', () => {
+    clearTimeout(wait);
+    if (over) dock.unpeek();
+    over = undefined;
+  });
 </script>
