@@ -1,8 +1,8 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, sortMemos, hits } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
@@ -10,6 +10,8 @@ const DOCK_W = 62;
 const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
+const MIN = { width: 200, height: 160 };
+const HOTKEY = 'Ctrl+Alt+N'; // 어디서나 새 메모
 const TOP = 44; // 화면 맨 위 이만큼은 비워 둔다 (최대화한 브라우저의 탭 줄)
 const LIST = { width: 270, height: 480 }; // 메모 목록 창 (그림자 여백 포함)
 const SIZE = { width: 270, height: 215 }; // 기본 포스트잇 (가로로 누운 직사각형)
@@ -41,15 +43,45 @@ function folder() {
   return settings.folder && fs.existsSync(settings.folder) ? settings.folder : null;
 }
 
-async function pickFolder() {
-  const r = await dialog.showOpenDialog(memos[0]?.win, {
+async function askFolder() {
+  const r = await dialog.showOpenDialog({
     title: '메모를 저장할 폴더를 고르세요 (구글드라이브/원드라이브 폴더도 됩니다)',
     properties: ['openDirectory', 'createDirectory'],
   });
-  if (r.canceled || !r.filePaths[0]) return null;
-  settings.folder = r.filePaths[0];
+  return r.canceled ? null : r.filePaths[0] || null;
+}
+
+async function pickFolder() {
+  const f = await askFolder();
+  if (!f) return null;
+  settings.folder = f;
   saveSettings();
-  return settings.folder;
+  return f;
+}
+
+// 저장 폴더를 바꾸고 기존 메모·사진·휴지통을 전부 옮긴다.
+// 열린 창의 사진 주소가 옛 폴더를 보고 있어 저장하면 깨지므로, 창은 비우고 새 폴더 기준으로 다시 연다.
+async function changeFolder() {
+  const from = folder();
+  const to = await askFolder();
+  if (!to) return;
+  let names = {};
+  try {
+    if (from) names = store.moveAll(from, to);
+  } catch (e) {
+    dialog.showErrorBox('메모', '옮기지 못했습니다. 메모는 원래 폴더에 그대로 있습니다.\n\n' + e.message);
+    return;
+  }
+  settings.folder = to;
+  saveSettings();
+  const open = memos.map((m) => ({ m, name: m.name && names[m.name], hidden: !m.win.isVisible(), bounds: place(m) }));
+  open.forEach(({ m }) => m.win.webContents.send('forget'));
+  setTimeout(() => {
+    open.forEach(({ m }) => m.win.close());
+    open.forEach(({ name, hidden, bounds }) => name && createMemo(name, { hidden, bounds }));
+    if (!open.some((x) => x.name)) createMemo(null);
+  }, 150);
+  dialog.showMessageBox({ type: 'info', title: '메모', message: `메모 ${Object.keys(names).length}개를 새 폴더로 옮겼습니다.`, detail: to });
 }
 
 const clamp = (v, lo, hi) => Math.round(Math.min(Math.max(v, lo), hi));
@@ -63,6 +95,7 @@ const memoArea = (b) => {
   return { ...wa, y: wa.y + TOP, height: wa.height - TOP };
 };
 
+let hotkeyOn = false; // 다른 프로그램이 먼저 쓰고 있으면 등록되지 않는다. 그때는 + 설명에서 뺀다.
 let dock; // 화면 끝에 붙는 제목 탭 줄
 let memos = []; // [{ win, name, title }] 띄워둔 포스트잇들
 const find = (e) => memos.find((m) => m.win.webContents.id === e.sender.id);
@@ -101,6 +134,7 @@ function updateDock() {
   dock.webContents.send('tabs', {
     // 북마크의 파인 쪽이 화면 안쪽(벽 반대편)을 보도록
     side: p.x + DOCK_W / 2 < wa.x + wa.width / 2 ? 'left' : 'right',
+    hotkey: hotkeyOn ? HOTKEY : '',
     // 최소화한 것도 흐리게 탭에 남는다
     tabs: tabbed()
       .map((m) => ({
@@ -174,8 +208,9 @@ function anchorFor(m) {
 function createMemo(openName, opts = {}) {
   const win = new BrowserWindow({
     ...SIZE,
-    minWidth: 200,
-    minHeight: 160,
+    // 크기 조절은 index.js 의 테두리가 맡는다. 윈도우에 맡기면 테두리 더블클릭을 앱이 받지 못하고
+    // 아래 테두리 더블클릭이 창을 세로로 끝까지 늘려 버린다.
+    resizable: false,
     frame: false,
     show: false,
     skipTaskbar: true,
@@ -198,11 +233,6 @@ function createMemo(openName, opts = {}) {
     updateDock();
   });
 
-  win.on('resized', () => {
-    const { width, height } = win.getBounds(); // 사용자가 직접 바꾼 크기만 새 기준이 된다
-    m.size = { width, height };
-    saveOpen();
-  });
   win.on('moved', saveOpen);
   win.on('focus', () => {
     if (peeked === m) peeked = null; // 눌러서 쓰기 시작하면 계속 떠 있는다
@@ -277,7 +307,9 @@ function slide(moves) {
   slideTimer = setInterval(() => {
     step++;
     moves.forEach(({ m, to }, i) => {
-      if (!m.win.isDestroyed()) put(m, { y: to.y, x: Math.round(starts[i].x + ((to.x - starts[i].x) * step) / 6) });
+      if (m.win.isDestroyed()) return;
+      const at = (a, b) => Math.round(a + ((b - a) * step) / 6);
+      put(m, { x: at(starts[i].x, to.x), y: at(starts[i].y, to.y) });
     });
     if (step === 6) clearInterval(slideTimer);
   }, 16);
@@ -311,13 +343,18 @@ let listWin = null;
 let listClosedAt = 0;
 let listSide = 'left';
 
+// 찾기용 글자만 남긴다
+const plain = (html) =>
+  html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
 function listData() {
   const f = folder();
   const rows = (f ? store.listAt(f) : []).map(({ name, at }) => {
     const open = memos.find((x) => x.name === name);
-    return { name, at, title: name.replace(/\.html$/i, ''), color: store.read(f, name).color, open: !!open && open.win.isVisible() };
+    const doc = store.read(f, name);
+    return { name, at, title: name.replace(/\.html$/i, ''), text: plain(doc.html), color: doc.color, open: !!open && open.win.isVisible() };
   });
-  return { order: settings.order || 'recent', side: listSide, items: sortMemos(rows, settings.order) };
+  return { order: settings.order || 'recent', side: listSide, items: sortMemos(rows, settings.order), trash: f ? store.listTrash(f) : [] };
 }
 
 function openList(from) {
@@ -384,10 +421,11 @@ function popupMenu(m) {
     { type: 'separator' },
     { label: '메모 폴더 열기', click: () => folder() && shell.openPath(folder()) },
     {
-      label: '저장 폴더 바꾸기',
-      click: async () => {
-        if (await pickFolder()) memos.forEach((x) => x.win.webContents.send('folder-changed'));
-      },
+      label: '설정',
+      submenu: [
+        { label: '저장 폴더 바꾸기 (메모도 함께 옮김)', click: changeFolder },
+        { label: '지금 폴더: ' + (folder() || '없음'), enabled: false },
+      ],
     },
     { type: 'separator' }
   );
@@ -433,6 +471,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     loadSettings();
+    hotkeyOn = globalShortcut.register(HOTKEY, quickMemo);
     createDock();
     watchForUpdates();
     if (!folder()) await pickFolder();
@@ -448,6 +487,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', () => {}); // 탭 줄로 살아있는다
 
 // 창이 다른 주소로 넘어가거나 새 창을 열지 못하게 한다.
@@ -494,6 +534,13 @@ ipcMain.handle('memo-hover', (e, on) => {
   if (on) clearTimeout(peekTimer);
   else endPeekSoon();
 });
+// 단축키: 비어 있는 새 메모가 이미 떠 있으면 또 만들지 않고 그걸 쓴다
+function quickMemo() {
+  const blank = memos.find((m) => !m.name && m.win.isVisible());
+  if (blank) blank.win.focus();
+  else createMemo(null);
+}
+
 // 포스트잇의 + 는 그 메모 근처에, 탭 줄의 + 는 가장 나중에 연 메모 근처에 나온다
 ipcMain.handle('new-memo', (e) => {
   const m = find(e);
@@ -528,6 +575,37 @@ ipcMain.handle('memo-drag', (e, dx, dy) => {
   if (m?.dragFrom) put(m, { x: m.dragFrom.x + dx, y: m.dragFrom.y + dy });
 });
 ipcMain.handle('memo-drag-end', saveOpen);
+
+// 테두리로 끌어서 크기 바꾸기. edge 에 l·r·b 가 들어 있는 쪽이 움직인다.
+ipcMain.handle('memo-resize', (e, edge, dx, dy) => {
+  const m = find(e);
+  if (!m?.dragFrom) return;
+  const f = m.dragFrom;
+  const width = Math.max(MIN.width, f.width + (edge.includes('l') ? -dx : edge.includes('r') ? dx : 0));
+  const height = Math.max(MIN.height, f.height + (edge.includes('b') ? dy : 0));
+  m.size = { width, height };
+  put(m, { x: edge.includes('l') ? f.x + f.width - width : f.x, y: f.y });
+});
+
+// 내용에 맞춘 크기로 바꾸고 주변 메모를 따라 옮긴다. 화면 끝 쪽 변은 그 자리에 둔다.
+ipcMain.handle('memo-fit', (e, w, h) => {
+  const m = find(e);
+  if (!m) return;
+  const old = place(m), area = memoArea(old), dir = direction(old);
+  const width = clamp(w, MIN.width, area.width), height = clamp(h, MIN.height, area.height);
+  const next = {
+    x: clamp(dir < 0 ? old.x + old.width - width : old.x, area.x, area.x + area.width - width),
+    y: clamp(old.y, area.y, area.y + area.height - height),
+    width,
+    height,
+  };
+  const shown = memos.filter((x) => x !== m && x.win.isVisible() && workArea(place(x)).x === workArea(old).x);
+  const boxes = reflow(shown.map(place), old, next, dir, GAP, area, [dock.getBounds()]);
+  m.size = { width, height };
+  put(m, next);
+  slide(shown.map((x, i) => ({ m: x, to: boxes[i] })));
+  setTimeout(saveOpen, 200);
+});
 
 ipcMain.handle('open-link', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
@@ -564,6 +642,17 @@ ipcMain.handle('list-new', () => {
   comeBack(true);
   createMemo(null);
   listWin?.close();
+});
+ipcMain.handle('list-restore', (_e, name) => {
+  if (!folder()) return;
+  comeBack(true);
+  createMemo(store.restore(folder(), name));
+  listWin?.close();
+});
+ipcMain.handle('list-folder', () => {
+  comeBack(true); // 비켜난 자리가 아니라 제자리를 기억하고 옮긴다
+  listWin?.close();
+  return changeFolder();
 });
 ipcMain.handle('list-order', (_e, order) => setOrder(order === 'name' ? 'name' : 'recent'));
 ipcMain.handle('list-remove', (_e, name) => {

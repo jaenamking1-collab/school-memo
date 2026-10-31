@@ -18,7 +18,7 @@
     flex-direction: column;
   }
 
-  #hd { display: flex; align-items: center; gap: 1px; padding: 3px 3px 2px 0; flex: none; cursor: default; } /* 끌기는 index.js 가 맡는다. drag 영역은 더블클릭을 받지 못한다 */
+  #hd { display: flex; align-items: center; gap: 1px; padding: 3px 3px 2px 0; flex: none; cursor: default; background: rgba(90, 70, 0, .14); } /* 끌기는 index.js 가 맡는다. drag 영역은 더블클릭을 받지 못한다 */
 
   #title {
     flex: 0 1 auto;
@@ -41,6 +41,34 @@
   }
   #hd button:hover { background: rgba(0, 0, 0, .1); }
   #hd button.on { background: rgba(0, 0, 0, .17); }
+
+  /* 크기 조절 테두리. 끌면 크기가 바뀌고 더블클릭하면 내용에 맞춘다 */
+  .rz { position: fixed; z-index: 20; }
+  #rz-l, #rz-r { top: 26px; bottom: 7px; width: 6px; cursor: ew-resize; }
+  #rz-l, #rz-bl { left: 0; }
+  #rz-r, #rz-br { right: 0; }
+  #rz-b { left: 7px; right: 7px; bottom: 0; height: 6px; cursor: ns-resize; }
+  #rz-bl, #rz-br { bottom: 0; width: 7px; height: 7px; }
+  #rz-bl { cursor: nesw-resize; }
+  #rz-br { cursor: nwse-resize; }
+
+  /* 서식 줄: 쓰는 중일 때만 나온다 */
+  #fmt { display: none; flex: none; gap: 1px; padding: 1px 6px 3px; }
+  body.active #fmt { display: flex; }
+  #fmt button { width: 25px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; font: 12px/1 "Malgun Gothic", sans-serif; color: #554c22; cursor: pointer; }
+  #fmt button:hover { background: rgba(0, 0, 0, .1); }
+
+  /* 체크리스트 */
+  .chk { min-height: 1.6em; }
+  .box {
+    display: inline-block; width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
+    border: 1.5px solid #6b5f2a; border-radius: 3px; cursor: pointer; user-select: none;
+    font: 700 11px/10px "Malgun Gothic", sans-serif; text-align: center; color: #fff;
+  }
+  .done .box { background: #6b5f2a; }
+  .done .box::after { content: '✓'; }
+  .done { text-decoration: line-through; opacity: .6; }
+  #ed ul { margin: 0; padding-left: 20px; }
 
   /* 색 고르기 */
   #colors {
@@ -104,5 +132,20 @@
     <button data-a="del">삭제</button>
   </div>
 </div>
+
+<div id="fmt">
+  <button data-c="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
+  <button data-c="italic" title="기울임 (Ctrl+I)"><i>I</i></button>
+  <button data-c="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
+  <button data-c="strikeThrough" title="취소선 (Ctrl+T)"><s>S</s></button>
+  <button data-c="insertUnorderedList" title="글머리표">•</button>
+  <button data-c="check" title="체크리스트">☑</button>
+</div>
+
+<div class="rz" id="rz-l" data-e="l"></div>
+<div class="rz" id="rz-r" data-e="r"></div>
+<div class="rz" id="rz-b" data-e="b"></div>
+<div class="rz" id="rz-bl" data-e="lb"></div>
+<div class="rz" id="rz-br" data-e="rb"></div>
 
 <script src="index.js"></script>

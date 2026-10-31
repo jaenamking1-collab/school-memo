@@ -86,6 +86,30 @@ exports.pushBoxes = (boxes, wall, dir, gap) => {
   return out;
 };
 
+// 메모 하나의 크기가 old 에서 next 로 바뀌었을 때 주변 메모의 새 자리.
+// 아래 메모는 높이 차만큼, 펼칠 방향 옆 메모는 너비 차만큼 따라 움직이고,
+// 그래도 겹치거나 화면을 벗어나는 메모는 가장 가까운 빈자리로 간다.
+exports.reflow = (others, old, next, dir, gap, area, fixed = []) => {
+  const dw = next.width - old.width, dh = next.height - old.height;
+  const oldRight = old.x + old.width, oldBottom = old.y + old.height;
+  const underIt = (b) => b.x < Math.max(oldRight, next.x + next.width) && Math.min(old.x, next.x) < b.x + b.width;
+  const besideIt = (b) => b.y < oldBottom && old.y < b.y + b.height;
+  const moved = others.map((b) => {
+    if (b.y >= oldBottom && underIt(b)) return { ...b, y: b.y + dh };
+    if (besideIt(b) && (dir < 0 ? b.x + b.width <= old.x : b.x >= oldRight)) return { ...b, x: b.x + dir * dw };
+    return { ...b };
+  });
+  const placed = [next, ...fixed];
+  const inArea = (b) => b.x >= area.x && b.y >= area.y && b.x + b.width <= area.x + area.width && b.y + b.height <= area.y + area.height;
+  const free = (b) => inArea(b) && !placed.some((o) => hits(b, o));
+  return moved.map((b, i) => {
+    // 따라갈 자리가 막히면 멀리 튀지 않고 원래 자리에 그대로 있는다
+    const box = free(b) ? b : free(others[i]) ? { ...others[i] } : exports.freeSpot(b, { width: b.width, height: b.height, gap }, area, placed, dir);
+    placed.push(box);
+    return box;
+  });
+};
+
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.
 exports.sortMemos = (list, order) =>
   [...list].sort((a, b) =>

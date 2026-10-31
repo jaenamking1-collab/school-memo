@@ -221,6 +221,11 @@ function unselect() {
 }
 
 ed.addEventListener('click', (e) => {
+  if (e.target.classList.contains('box')) {
+    e.target.parentElement.classList.toggle('done');
+    touch();
+    return;
+  }
   const a = e.target.closest('a');
   if (a) { e.preventDefault(); memo.openLink(a.href); return; } // 기본 브라우저로 연다
   unselect();
@@ -261,12 +266,144 @@ $('tools').onclick = (e) => {
   touch();
 };
 
+// ---- 서식·체크리스트 ----
+function caretEnd(el) {
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.collapse(false);
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+}
+
+function makeBox() {
+  const b = document.createElement('span');
+  b.className = 'box';
+  b.contentEditable = 'false';
+  return b;
+}
+
+// 지금 줄을 체크리스트로 만들거나 다시 보통 줄로 되돌린다
+function toggleCheck() {
+  ed.focus();
+  if (!ed.textContent.trim() && !ed.querySelector('img')) {
+    ed.innerHTML = '<div><br></div>';
+    caretEnd(ed.firstChild);
+  }
+  document.execCommand('formatBlock', false, 'div');
+  const n = getSelection().anchorNode;
+  const line = (n.nodeType === 1 ? n : n.parentElement).closest('div');
+  if (!line || line === ed || !ed.contains(line)) return;
+  if (line.classList.contains('chk')) {
+    line.querySelector(':scope > .box')?.remove();
+    line.classList.remove('chk', 'done');
+  } else {
+    line.classList.add('chk');
+    line.prepend(makeBox());
+  }
+  caretEnd(line);
+  touch();
+}
+
+$('fmt').addEventListener('mousedown', (e) => e.preventDefault()); // 버튼을 눌러도 글자 선택이 풀리지 않게
+$('fmt').addEventListener('click', (e) => {
+  const c = e.target.closest('button')?.dataset.c;
+  if (!c) return;
+  if (c === 'check') return toggleCheck();
+  ed.focus();
+  document.execCommand(c);
+  touch();
+});
+
+ed.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 't') {
+    e.preventDefault();
+    document.execCommand('strikeThrough');
+    touch();
+    return;
+  }
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const n = getSelection().anchorNode;
+  const chk = (n?.nodeType === 1 ? n : n?.parentElement)?.closest('.chk');
+  if (!chk) return;
+  e.preventDefault();
+  // 빈 줄에서 Enter 를 치면 체크리스트에서 나온다
+  if (!chk.textContent.trim()) {
+    const d = document.createElement('div');
+    d.append(document.createElement('br'));
+    chk.replaceWith(d);
+    caretEnd(d);
+    return touch();
+  }
+  const r = getSelection().getRangeAt(0);
+  r.deleteContents();
+  r.setEnd(chk, chk.childNodes.length);
+  const rest = r.extractContents();
+  const next = document.createElement('div');
+  next.className = 'chk';
+  const box = makeBox();
+  next.append(box, rest.textContent ? rest : document.createElement('br'));
+  chk.after(next);
+  const at = document.createRange();
+  at.setStartAfter(box);
+  at.collapse(true);
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(at);
+  touch();
+});
+
+// 네모를 지워버린 줄은 보통 줄로 돌아간다
+ed.addEventListener('input', () => {
+  ed.querySelectorAll('.chk').forEach((c) => {
+    if (!c.querySelector(':scope > .box')) c.classList.remove('chk', 'done');
+  });
+});
+
+// 테두리 더블클릭: 내용에 꼭 맞는 창 크기를 재서 넘긴다. 줄이 너무 길면 이 너비에서 접는다.
+const FIT_WIDTH = 640;
+function fitToContent() {
+  const keep = ed.style.cssText;
+  ed.style.height = 'auto';
+  ed.style.width = 'max-content';
+  ed.style.maxWidth = FIT_WIDTH + 'px';
+  const width = Math.ceil(ed.getBoundingClientRect().width);
+  ed.style.width = width + 'px';
+  const height = Math.ceil(ed.getBoundingClientRect().height);
+  ed.style.cssText = keep;
+  memo.fit(width, height + $('hd').offsetHeight + 28); // 28: 서식 줄 자리
+}
+
+// 테두리 끌기. 창이 움직여도 놓치지 않게 화면 좌표로 잰다.
+document.querySelectorAll('.rz').forEach((el) => {
+  el.addEventListener('dblclick', fitToContent);
+  el.addEventListener('pointerdown', async (e) => {
+    if (e.button !== 0) return;
+    const sx = e.screenX, sy = e.screenY;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev) => memo.resize(el.dataset.e, ev.screenX - sx, ev.screenY - sy);
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      memo.dragEnd();
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    await memo.dragStart();
+  });
+});
+
+const active = (on) => document.body.classList.toggle('active', on);
+addEventListener('focus', () => active(true));
+addEventListener('blur', () => active(false));
+active(document.hasFocus());
+
 // ---- 시작 ----
 async function init() {
   const s = await memo.state();
   if (!s.folder) return;
   const open = new URLSearchParams(location.search).get('open');
-  if (!open) return;
+  if (!open) return ed.focus(); // 새 메모는 바로 적을 수 있게
   // 다른 PC 나 탐색기에서 그 사이 지워졌을 수도 있다
   try {
     show(open, await memo.read(open));
@@ -274,5 +411,4 @@ async function init() {
     show(null, null);
   }
 }
-memo.onFolderChanged(() => { show(null, null); init(); });
 init();

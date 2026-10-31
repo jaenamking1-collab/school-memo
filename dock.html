@@ -34,7 +34,7 @@
 <script>
   const d = document.getElementById('d');
 
-  function render({ side, tabs }) {
+  function render({ side, tabs, hotkey }) {
     document.body.classList.toggle('left', side === 'left');
     d.innerHTML = '';
     for (const t of tabs) {
@@ -59,7 +59,7 @@
     n.className = 'tab';
     n.id = 'new';
     n.textContent = '+';
-    n.title = '새 메모';
+    n.title = hotkey ? `새 메모 (${hotkey})` : '새 메모';
     d.append(n);
   }
 

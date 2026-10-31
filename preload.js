@@ -17,8 +17,9 @@ contextBridge.exposeInMainWorld('memo', {
   read: call('read'),
   save: call('save'),
   saveImage: call('save-image'),
-  onFolderChanged: (fn) => ipcRenderer.on('folder-changed', fn),
   onForget: (fn) => ipcRenderer.on('forget', fn),
+  fit: call('memo-fit'),
+  resize: call('memo-resize'),
 });
 
 // 화면 끝 탭 줄
@@ -42,5 +43,7 @@ contextBridge.exposeInMainWorld('memoList', {
   newMemo: call('list-new'),
   order: call('list-order'),
   remove: call('list-remove'),
+  restore: call('list-restore'),
+  folder: call('list-folder'),
   onData: (fn) => ipcRenderer.on('list-data', (_e, d) => fn(d)),
 });

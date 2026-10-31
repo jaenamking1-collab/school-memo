@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -104,9 +104,52 @@ for (const bad of ['.exe', '.html', '/../x.png', '', null]) {
 const h = store.save(f, null, '색주입', '<div>x</div>', '#fff--><script>');
 assert.equal(fs.readFileSync(path.join(f, h), 'utf8').split('\n')[0], `${store.MARK} color=${store.DEFAULT_COLOR}-->`);
 
-// 삭제
+// 삭제는 휴지통으로 옮기기다. 되살리면 내용이 그대로 돌아온다.
+const keep = store.read(f, col).html;
 store.remove(f, col);
 assert.ok(!store.list(f).includes(col));
+assert.ok(store.listTrash(f).includes(col));
+const same = store.save(f, null, '딴 메모', '<div>새로 만든 같은 이름</div>');
+const back = store.restore(f, col);
+assert.equal(back, '딴 메모 (2).html'); // 같은 이름이 있어도 덮어쓰지 않는다
+assert.equal(store.read(f, back).html, keep);
+assert.equal(store.read(f, same).html, '<div>새로 만든 같은 이름</div>');
+assert.ok(!store.listTrash(f).includes(col));
+assert.throws(() => store.restore(f, '../memo-outside.html'), /잘못된 메모 이름/);
+
+// 저장 폴더 옮기기
+const mv = fs.mkdtempSync(path.join(os.tmpdir(), 'memo-mv-'));
+const src = path.join(mv, 'a'), dst = path.join(mv, 'b');
+fs.mkdirSync(src);
+fs.mkdirSync(dst);
+fs.writeFileSync(path.join(src, '남의파일.txt'), '그대로');
+const pic = store.saveImage(src, Buffer.from([1, 2, 3]), '.png');
+const m1 = store.save(src, null, '겹침', `<img src="${pic}">`);
+const m2 = store.save(src, null, '버릴것', '<div>휴지통</div>');
+store.remove(src, m2);
+store.save(dst, null, '겹침', '<div>원래 있던 메모</div>');
+const moved = store.moveAll(src, dst);
+assert.deepEqual(moved, { '겹침.html': '겹침 (2).html' });
+assert.deepEqual(store.list(src), []);
+assert.deepEqual(store.listTrash(src), []);
+assert.deepEqual(store.listTrash(dst), ['버릴것.html']);
+assert.equal(store.read(dst, '겹침.html').html, '<div>원래 있던 메모</div>'); // 덮어쓰지 않았다
+assert.match(store.read(dst, '겹침 (2).html').html, /src="file:.*\/b\/assets\//); // 사진 주소가 새 폴더를 본다
+assert.equal(fs.readdirSync(path.join(dst, 'assets')).length, 1);
+assert.ok(!fs.existsSync(path.join(src, 'assets')));
+assert.ok(fs.existsSync(path.join(src, '남의파일.txt'))); // 메모가 아닌 파일은 두고 간다
+assert.throws(() => store.moveAll(src, src), /옮길 수 없습니다/);
+assert.throws(() => store.moveAll(src, path.join(src, '안쪽')), /옮길 수 없습니다/);
+// 복사하다 실패하면 원본이 그대로 남고 새 폴더도 깨끗하다
+const m3 = store.save(src, null, '안전', '<div>x</div>');
+const blocked = path.join(mv, 'c');
+fs.mkdirSync(blocked);
+fs.writeFileSync(path.join(blocked, 'assets'), '폴더 자리에 파일이 있어 사진 복사가 실패한다');
+store.saveImage(src, Buffer.from([9]), '.png');
+assert.throws(() => store.moveAll(src, blocked));
+assert.deepEqual(store.list(src), [m3]);
+assert.deepEqual(store.list(blocked), []);
+fs.rmSync(mv, { recursive: true, force: true });
 
 fs.rmSync(f, { recursive: true, force: true });
 
@@ -157,6 +200,27 @@ assert.equal(pushed[1].x, 426); // 가리던 메모
 assert.equal(pushed[2].x, 152); // 밀려서 닿은 옆 메모
 assert.equal(pushed[3].x, -200); // 아직 안 닿은 메모
 assert.equal(pushBoxes([box(100, 300)], { ...list, x: 50 }, 1, 4)[0].x, 304); // 오른쪽으로 펼칠 때
+
+// 크기가 바뀌면 주변이 따라 움직인다
+const tall = { x: 0, y: 0, width: 1000, height: 1000 };
+const was = box(700, 0, 270, 300);
+const round = (l) => l.map((b) => [b.x, b.y]);
+// 커지면 아래 메모는 내려가고 옆 메모는 밀려난다. 겹치지 않는다.
+let grown = box(600, 0, 370, 500);
+let rf = reflow([box(700, 304), box(426, 0), box(100, 600)], was, grown, -1, 4, tall);
+assert.deepEqual(round(rf), [[700, 504], [326, 0], [100, 600]]);
+assert.ok(!rf.some((b) => overlap(b, [grown])));
+// 작아지면 틈을 메운다
+grown = box(800, 0, 170, 100);
+rf = reflow([box(700, 304), box(426, 0)], was, grown, -1, 4, tall);
+assert.deepEqual(round(rf), [[700, 104], [426, 0]]); // 옆 메모는 위 메모가 올라온 자리에 막혀 그대로
+rf = reflow([box(426, 0)], was, grown, -1, 4, tall);
+assert.deepEqual(round(rf), [[526, 0]]); // 막히지 않으면 따라온다
+// 밀려서 화면 밖으로 나가면 빈자리로 간다
+grown = box(600, 0, 370, 800);
+rf = reflow([box(700, 304), box(700, 523)], was, grown, -1, 4, tall);
+assert.ok(rf.every((b) => b.y + b.height <= 1000 && b.x >= 0 && !overlap(b, [grown])));
+assert.ok(!overlap(rf[0], [rf[1]]));
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];

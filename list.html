@@ -20,11 +20,16 @@
 
   #hd { display: flex; align-items: center; gap: 4px; padding: 8px 8px 6px; flex: none; }
   #hd b { flex: 1; font-size: 13px; }
-  #hd button, #new { border: 0; border-radius: 5px; background: transparent; font: inherit; cursor: pointer; color: #554c22; }
+  #q { flex: none; margin: 0 8px 4px; padding: 5px 8px; border: 1px solid rgba(120, 95, 0, .3); border-radius: 5px; background: #fff; font: inherit; color: inherit; outline: 0; }
+  #q:focus { border-color: #4c8bf5; }
+  #hd button, #new, #ft button { border: 0; border-radius: 5px; background: transparent; font: inherit; cursor: pointer; color: #554c22; }
   #hd button { padding: 2px 7px; font-size: 12px; }
-  #hd button:hover, #new:hover { background: rgba(120, 95, 0, .14); }
+  #hd button:hover, #new:hover, #ft button:hover { background: rgba(120, 95, 0, .14); }
   #hd button.on { background: #fdf07a; font-weight: 700; }
-  #new { margin: 0 8px 6px; padding: 6px; text-align: left; flex: none; }
+  #new { margin: 0 8px 6px; padding: 6px; text-align: left; flex: none; width: calc(100% - 16px); }
+  #ft { display: flex; justify-content: space-between; flex: none; margin: 2px 8px 8px; }
+  #ft button { padding: 5px 6px; font-size: 12px; }
+  .gone .dot { display: none; }
   #items { flex: 1; overflow: auto; padding-bottom: 6px; scrollbar-width: thin; }
   .item { display: flex; align-items: center; gap: 7px; padding: 6px 8px 6px 11px; cursor: pointer; }
   .item:hover { background: rgba(120, 95, 0, .1); }
@@ -38,12 +43,19 @@
 </style>
 <div id="p">
   <div id="hd">
-    <b>메모 목록</b>
+    <b id="head">메모 목록</b>
     <button data-o="recent">최근순</button>
     <button data-o="name">이름순</button>
   </div>
-  <button id="new">+ 새 메모</button>
+  <div id="main" style="display:contents">
+    <input id="q" placeholder="제목·내용 찾기" spellcheck="false" />
+    <button id="new">+ 새 메모</button>
+  </div>
   <div id="items"></div>
-  <div id="none" hidden>저장된 메모가 없습니다.</div>
+  <div id="none" hidden></div>
+  <div id="ft">
+    <button id="trash"></button>
+    <button id="folder" title="메모·사진·휴지통을 새 폴더로 전부 옮깁니다">저장 폴더 바꾸기</button>
+  </div>
 </div>
 <script src="list.js"></script>
