@@ -52,11 +52,16 @@
   #rz-bl { cursor: nesw-resize; }
   #rz-br { cursor: nwse-resize; }
 
-  /* 서식 줄: 쓰는 중일 때만 나온다 */
-  #fmt { display: none; flex: none; gap: 1px; padding: 1px 6px 3px; }
+  /* 아이콘: 전부 같은 크기·같은 선 굵기 */
+  svg { display: block; width: 14px; height: 14px; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* 편집 메뉴: 본문을 눌렀을 때만 나온다 */
+  #fmt { display: none; flex: none; align-items: center; gap: 2px; padding: 2px 6px 4px; border-top: 1px solid rgba(90, 70, 0, .18); }
   body.active #fmt { display: flex; }
-  #fmt button { width: 25px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; font: 12px/1 "Malgun Gothic", sans-serif; color: #554c22; cursor: pointer; }
-  #fmt button:hover { background: rgba(0, 0, 0, .1); }
+  #fmt button { width: 28px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; font: 13px/1 "Malgun Gothic", "맑은 고딕", sans-serif; color: #4a4012; cursor: pointer; }
+  #fmt button:hover { background: rgba(90, 70, 0, .14); }
+  #fmt button.on { background: #4a4012; color: #fffbe0; } /* 지금 커서에 적용된 서식 */
+  #fmt i { width: 1px; height: 14px; margin: 0 4px; background: rgba(90, 70, 0, .3); }
 
   /* 체크리스트 */
   .chk { min-height: 1.6em; }
@@ -116,10 +121,10 @@
 <div id="hd">
   <div id="title" spellcheck="false" data-auto="제목" title="더블클릭해서 제목 고치기"></div>
   <div id="sp"></div>
-  <button id="b-new" title="새 메모">+</button>
-  <button id="b-shot" title="스크린샷 찍어 넣기">📷</button>
-  <button id="b-color" title="포스트잇 색 바꾸기">🎨</button>
-  <button id="b-hide" title="최소화 (화면 끝 탭에 남습니다)">─</button>
+  <button id="b-new" title="새 메모"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+  <button id="b-shot" title="스크린샷 찍어 넣기"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.5h3l1-2h4l1 2h3v7.5H2z"/><circle cx="8" cy="9" r="2.3"/></svg></button>
+  <button id="b-color" title="메모 색 바꾸기"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2s4.5 4.8 4.5 7.8a4.5 4.5 0 0 1-9 0C3.5 6.800 8 2 8 2z"/></svg></button>
+  <button id="b-hide" title="최소화 (화면 끝 탭에 남습니다)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
 </div>
 
 <div id="colors" hidden></div>
@@ -135,12 +140,12 @@
 </div>
 
 <div id="fmt">
-  <button data-c="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
-  <button data-c="italic" title="기울임 (Ctrl+I)"><i>I</i></button>
-  <button data-c="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
-  <button data-c="strikeThrough" title="취소선 (Ctrl+T)"><s>S</s></button>
-  <button data-c="insertUnorderedList" title="글머리표">•</button>
-  <button data-c="check" title="체크리스트">☑</button>
+  <button data-c="bold" title="굵게 (Ctrl+B)"><b>가</b></button>
+  <button data-c="underline" title="밑줄 (Ctrl+U)"><u>가</u></button>
+  <button data-c="strikeThrough" title="취소선 (Ctrl+T)"><s>가</s></button>
+  <i></i>
+  <button data-c="insertUnorderedList" title="글머리표"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8"/><circle cx="2.800" cy="4" r=".8"/><circle cx="2.800" cy="8" r=".8"/><circle cx="2.800" cy="12" r=".8"/></svg></button>
+  <button data-c="check" title="체크리스트"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.500" y="2.500" width="11" height="11" rx="2"/><path d="M5 8.200l2.200 2.200L11 6"/></svg></button>
 </div>
 
 <div class="rz" id="rz-l" data-e="l"></div>

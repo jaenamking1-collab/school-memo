@@ -110,6 +110,28 @@ exports.reflow = (others, old, next, dir, gap, area, fixed = []) => {
   });
 };
 
+// 끌고 있는 메모가 가까이 오면 다른 메모·화면 끝에 붙는다.
+// 옆이나 위아래로 닿을 때는 gap 만큼 띄우고, 위아래로 이웃한 메모와는 끝선도 맞춘다.
+exports.snapMove = (box, others, area, gap, reach) => {
+  const { x, y, width: w, height: h } = box;
+  const pick = (now, list) => list.reduce((best, v) => (Math.abs(v - now) < Math.abs(best - now) ? v : best), list[0] ?? now);
+  const closeX = [area.x, area.x + area.width - w].filter((v) => Math.abs(v - x) <= reach);
+  const closeY = [area.y, area.y + area.height - h].filter((v) => Math.abs(v - y) <= reach);
+  for (const o of others) {
+    const right = o.x + o.width, bottom = o.y + o.height;
+    const nearRow = y < bottom + gap + reach && o.y < y + h + gap + reach; // 세로로 닿을 만큼 가깝다
+    const nearCol = x < right + gap + reach && o.x < x + w + gap + reach; // 가로로 닿을 만큼 가깝다
+    if (nearRow) closeX.push(o.x - w - gap, right + gap);
+    if (nearCol) closeY.push(o.y - h - gap, bottom + gap);
+    if (nearRow && nearCol) {
+      closeX.push(o.x, right - w);
+      closeY.push(o.y, bottom - h);
+    }
+  }
+  const near = (list, now) => list.filter((v) => Math.abs(v - now) <= reach);
+  return { x: pick(x, near(closeX, x)), y: pick(y, near(closeY, y)) };
+};
+
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.
 exports.sortMemos = (list, order) =>
   [...list].sort((a, b) =>

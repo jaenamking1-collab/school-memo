@@ -39,9 +39,13 @@ function isMemo(p) {
 // 파일에는 상대경로, 화면에는 절대 file:// 주소 — PC마다 폴더 경로가 달라도 열린다.
 const assetsDir = (f) => path.join(f, 'assets');
 const trashDir = (f) => path.join(f, '휴지통');
+const shotsDir = (f) => path.join(f, '스크린샷'); // 메모 밖에서도 찾아 쓰기 좋게 사진과 따로 둔다
 const assetsUrl = (f) => pathToFileURL(assetsDir(f)).href;
-const toScreen = (f, html) => html.split('src="assets/').join(`src="${assetsUrl(f)}/`);
-const toDisk = (f, html) => html.split(`src="${assetsUrl(f)}/`).join('src="assets/');
+const shotsUrl = (f) => pathToFileURL(shotsDir(f)).href;
+const toScreen = (f, html) =>
+  html.split('src="assets/').join(`src="${assetsUrl(f)}/`).split('src="스크린샷/').join(`src="${shotsUrl(f)}/`);
+const toDisk = (f, html) =>
+  html.split(`src="${assetsUrl(f)}/`).join('src="assets/').split(`src="${shotsUrl(f)}/`).join('src="스크린샷/');
 
 // 같은 이름이 이미 있으면 덮어쓰지 않고 번호를 붙인다
 function uniquify(f, next, self) {
@@ -123,7 +127,17 @@ exports.saveImage = (f, bytes, ext) => {
   return `${assetsUrl(f)}/${name}`;
 };
 
-// 저장 폴더 옮기기. 메모·사진·휴지통을 전부 복사해 크기까지 맞춰 본 뒤에야 원본을 지운다.
+// 스크린샷은 찍은 시각을 이름으로 쓴다. 같은 초에 찍어도 겹치지 않게 난수를 붙인다.
+exports.saveShot = (f, bytes, now = new Date()) => {
+  fs.mkdirSync(shotsDir(f), { recursive: true });
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}_${p(now.getHours())}-${p(now.getMinutes())}-${p(now.getSeconds())}`;
+  const name = `${stamp}-${Math.random().toString(36).slice(2, 6)}.png`;
+  fs.writeFileSync(path.join(shotsDir(f), name), Buffer.from(bytes));
+  return `${shotsUrl(f)}/${name}`;
+};
+
+// 저장 폴더 옮기기. 메모·사진·스크린샷·휴지통을 전부 복사해 크기까지 맞춰 본 뒤에야 원본을 지운다.
 // 복사 중 실패하면 새 폴더에 만든 것만 치우고 던진다. 원본은 그대로다.
 // 고른 폴더에 같은 이름 메모가 있으면 덮어쓰지 않고 번호를 붙인다. 바뀐 이름을 { 옛이름: 새이름 } 으로 돌려준다.
 exports.moveAll = (from, to) => {
@@ -146,11 +160,12 @@ exports.moveAll = (from, to) => {
     }
     for (const n of exports.listTrash(from)) copy(path.join(trashDir(from), n), path.join(trashDir(to), uniquify(trashDir(to), n, null)));
     // 사진 이름은 시각+난수라 겹치면 같은 사진이다. 원본을 덮어쓰지 않고 건너뛴다.
-    if (fs.existsSync(assetsDir(from))) {
-      for (const n of fs.readdirSync(assetsDir(from))) {
-        const dst = path.join(assetsDir(to), n);
-        if (fs.existsSync(dst)) done.push(path.join(assetsDir(from), n));
-        else copy(path.join(assetsDir(from), n), dst);
+    for (const dir of [assetsDir, shotsDir]) {
+      if (!fs.existsSync(dir(from))) continue;
+      for (const n of fs.readdirSync(dir(from))) {
+        const dst = path.join(dir(to), n);
+        if (fs.existsSync(dst)) done.push(path.join(dir(from), n));
+        else copy(path.join(dir(from), n), dst);
       }
     }
   } catch (e) {
@@ -158,7 +173,7 @@ exports.moveAll = (from, to) => {
     throw e;
   }
   done.forEach((p) => fs.rmSync(p, { force: true }));
-  for (const d of [assetsDir(from), trashDir(from)]) {
+  for (const d of [assetsDir(from), shotsDir(from), trashDir(from)]) {
     if (fs.existsSync(d) && !fs.readdirSync(d).length) fs.rmdirSync(d); // 비었으면 폴더도 치운다
   }
   return names;

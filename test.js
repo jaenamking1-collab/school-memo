@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -117,6 +117,22 @@ assert.equal(store.read(f, same).html, '<div>새로 만든 같은 이름</div>')
 assert.ok(!store.listTrash(f).includes(col));
 assert.throws(() => store.restore(f, '../memo-outside.html'), /잘못된 메모 이름/);
 
+// 스크린샷은 저장 폴더 아래 스크린샷 폴더에 찍은 시각 이름으로 들어간다
+const sf = fs.mkdtempSync(path.join(os.tmpdir(), 'memo-shot-'));
+const shotUrl = store.saveShot(sf, Buffer.from([1, 2]), new Date(2026, 9, 31, 19, 5, 7));
+const shotFiles = fs.readdirSync(path.join(sf, '스크린샷'));
+assert.match(shotFiles[0], /^2026-10-31_19-05-07-\w+\.png$/);
+const sm = store.save(sf, null, '찍은것', `<img src="${shotUrl}">`);
+assert.match(fs.readFileSync(path.join(sf, sm), 'utf8'), /src="스크린샷\/2026-10-31_19-05-07-\w+\.png"/); // 파일에는 상대 주소
+assert.equal(store.read(sf, sm).html, `<img src="${shotUrl}">`);
+const sf2 = fs.mkdtempSync(path.join(os.tmpdir(), 'memo-shot2-'));
+store.moveAll(sf, sf2); // 폴더를 옮겨도 스크린샷이 따라간다
+assert.deepEqual(fs.readdirSync(path.join(sf2, '스크린샷')), shotFiles);
+assert.ok(!fs.existsSync(path.join(sf, '스크린샷')));
+assert.match(store.read(sf2, sm).html, /memo-shot2-.*\.png/);
+fs.rmSync(sf, { recursive: true, force: true });
+fs.rmSync(sf2, { recursive: true, force: true });
+
 // 저장 폴더 옮기기
 const mv = fs.mkdtempSync(path.join(os.tmpdir(), 'memo-mv-'));
 const src = path.join(mv, 'a'), dst = path.join(mv, 'b');
@@ -221,6 +237,21 @@ grown = box(600, 0, 370, 800);
 rf = reflow([box(700, 304), box(700, 523)], was, grown, -1, 4, tall);
 assert.ok(rf.every((b) => b.y + b.height <= 1000 && b.x >= 0 && !overlap(b, [grown])));
 assert.ok(!overlap(rf[0], [rf[1]]));
+
+// 끌 때 자석처럼 붙기
+const scr = { x: 0, y: 44, width: 1000, height: 700 };
+const fix = box(500, 300);
+// 메모 왼쪽에 가까이 오면 틈 4 를 두고 붙고, 줄 높이도 맞는다
+assert.deepEqual(snapMove(box(220, 305), [fix], scr, 4, 12), { x: 226, y: 300 });
+// 메모 아래로 오면 왼쪽 끝선이 맞는다
+assert.deepEqual(snapMove(box(506, 525), [fix], { ...scr, height: 900 }, 4, 12), { x: 500, y: 519 });
+// 화면 끝
+assert.deepEqual(snapMove(box(5, 50), [], scr, 4, 12), { x: 0, y: 44 });
+assert.deepEqual(snapMove(box(725, 400), [], scr, 4, 12), { x: 730, y: 400 });
+// 멀면 그대로
+assert.deepEqual(snapMove(box(100, 100), [fix], scr, 4, 12), { x: 100, y: 100 });
+// 줄이 다르게 멀리 있는 메모의 옆줄에는 붙지 않는다
+assert.deepEqual(snapMove(box(226, 80), [box(500, 600)], scr, 4, 12), { x: 226, y: 80 });
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];

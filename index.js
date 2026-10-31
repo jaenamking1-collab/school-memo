@@ -362,6 +362,7 @@ ed.addEventListener('input', () => {
 
 // 테두리 더블클릭: 내용에 꼭 맞는 창 크기를 재서 넘긴다. 줄이 너무 길면 이 너비에서 접는다.
 const FIT_WIDTH = 640;
+const FMT_H = 34; // 편집 메뉴 자리
 function fitToContent() {
   const keep = ed.style.cssText;
   ed.style.height = 'auto';
@@ -371,7 +372,7 @@ function fitToContent() {
   ed.style.width = width + 'px';
   const height = Math.ceil(ed.getBoundingClientRect().height);
   ed.style.cssText = keep;
-  memo.fit(width, height + $('hd').offsetHeight + 28); // 28: 서식 줄 자리
+  memo.fit(width, height + $('hd').offsetHeight + FMT_H);
 }
 
 // 테두리 끌기. 창이 움직여도 놓치지 않게 화면 좌표로 잰다.
@@ -393,10 +394,19 @@ document.querySelectorAll('.rz').forEach((el) => {
   });
 });
 
-const active = (on) => document.body.classList.toggle('active', on);
-addEventListener('focus', () => active(true));
-addEventListener('blur', () => active(false));
-active(document.hasFocus());
+// 편집 메뉴는 본문에 들어와 있을 때만 보인다
+ed.addEventListener('focus', () => document.body.classList.add('active'));
+ed.addEventListener('blur', () => document.body.classList.remove('active'));
+
+// 커서가 있는 곳에 적용된 서식을 버튼에 표시한다
+document.addEventListener('selectionchange', () => {
+  if (!document.body.classList.contains('active')) return;
+  const n = getSelection().anchorNode;
+  const inCheck = !!(n?.nodeType === 1 ? n : n?.parentElement)?.closest('.chk');
+  document.querySelectorAll('#fmt [data-c]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.c === 'check' ? inCheck : document.queryCommandState(b.dataset.c));
+  });
+});
 
 // ---- 스크린샷 ----
 $('b-shot').onclick = async () => { await flush(); memo.shot(); };

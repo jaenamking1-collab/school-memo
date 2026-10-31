@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut, deskto
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, sortMemos, hits } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
@@ -11,6 +11,7 @@ const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
 const MIN = { width: 200, height: 160 };
+const MAGNET = 12; // 끌 때 이만큼 가까우면 착 붙는다
 const HOTKEY = 'Ctrl+Alt+N'; // 어디서나 새 메모
 const TOP = 44; // 화면 맨 위 이만큼은 비워 둔다 (최대화한 브라우저의 탭 줄)
 const LIST = { width: 270, height: 480 }; // 메모 목록 창 (그림자 여백 포함)
@@ -441,7 +442,7 @@ function endShot(rect) {
   if (!rect || !image || !folder()) return;
   const scale = image.getSize().width / bounds.width;
   const px = (v) => Math.round(v * scale);
-  const url = store.saveImage(folder(), image.crop({ x: px(rect.x), y: px(rect.y), width: px(rect.width), height: px(rect.height) }).toPNG(), '.png');
+  const url = store.saveShot(folder(), image.crop({ x: px(rect.x), y: px(rect.y), width: px(rect.width), height: px(rect.height) }).toPNG());
   m.win.webContents.send('shot', url, Math.round(rect.width));
 }
 
@@ -628,7 +629,10 @@ ipcMain.handle('memo-drag-start', (e) => {
 });
 ipcMain.handle('memo-drag', (e, dx, dy) => {
   const m = find(e);
-  if (m?.dragFrom) put(m, { x: m.dragFrom.x + dx, y: m.dragFrom.y + dy });
+  if (!m?.dragFrom) return;
+  const box = { ...m.dragFrom, x: m.dragFrom.x + dx, y: m.dragFrom.y + dy };
+  const others = [dock.getBounds(), ...memos.filter((x) => x !== m && x.win.isVisible()).map(place)];
+  put(m, snapMove(box, others, memoArea(box), GAP, MAGNET));
 });
 ipcMain.handle('memo-drag-end', saveOpen);
 
