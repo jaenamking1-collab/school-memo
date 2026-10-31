@@ -565,7 +565,8 @@ ipcMain.handle('dock-drag-start', () => {
 ipcMain.handle('dock-drag', (_e, dx, dy) => {
   if (!dragFrom) return; // dragStart 가 아직 안 왔으면 무시
   const p = snapToEdge(dragFrom.x + dx, dragFrom.y + dy);
-  dock.setPosition(p.x, p.y);
+  // setPosition 은 화면 경계를 넘는 순간 창을 키운다. 크기까지 함께 넣는다.
+  dock.setBounds({ x: p.x, y: p.y, width: DOCK_W, height: dockHeight() });
   // 펼쳐둔 건 늘어놓은 모양 그대로 같이 따라온다
   const to = { ...dragFrom, x: p.x, y: p.y };
   dragMemos.forEach(({ m, b }) => put(m, followDock(b, dragFrom, to, direction(dragFrom), direction(to), memoArea(to))));
