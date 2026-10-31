@@ -132,6 +132,21 @@ exports.snapMove = (box, others, area, gap, reach) => {
   return { x: pick(x, near(closeX, x)), y: pick(y, near(closeY, y)) };
 };
 
+// 탭 줄이 from 에서 to 로 옮겨 갈 때 메모의 새 자리. 탭 줄에서 떨어진 거리를 그대로 지킨다.
+// 화면을 건너가 방향이 바뀌면 탭 줄 반대쪽으로 뒤집힌다. 이동 거리로 밀면 옆 모니터로 넘어갈 때
+// 실제로는 몇십 px 차이뿐이라 메모가 옛 화면에 남는다.
+exports.followDock = (b, from, to, fromDir, toDir, area) => {
+  const dist = fromDir < 0 ? from.x - (b.x + b.width) : b.x - (from.x + from.width);
+  const x = toDir < 0 ? to.x - dist - b.width : to.x + to.width + dist;
+  const y = b.y + to.y - from.y;
+  return {
+    x: Math.min(Math.max(x, area.x), area.x + area.width - b.width),
+    y: Math.min(Math.max(y, area.y), area.y + area.height - b.height),
+    width: b.width,
+    height: b.height,
+  };
+};
+
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.
 exports.sortMemos = (list, order) =>
   [...list].sort((a, b) =>

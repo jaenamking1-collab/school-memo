@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, followDock, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -252,6 +252,15 @@ assert.deepEqual(snapMove(box(725, 400), [], scr, 4, 12), { x: 730, y: 400 });
 assert.deepEqual(snapMove(box(100, 100), [fix], scr, 4, 12), { x: 100, y: 100 });
 // 줄이 다르게 멀리 있는 메모의 옆줄에는 붙지 않는다
 assert.deepEqual(snapMove(box(226, 80), [box(500, 600)], scr, 4, 12), { x: 226, y: 80 });
+
+// 탭 줄을 옆 화면으로 옮기면 메모가 따라가고 방향이 뒤집힌다
+const dockA = box(1986, 300, 62, 200), dockB = box(2048, 300, 62, 200);
+const right = { x: 2048, y: 44, width: 1500, height: 900 };
+assert.deepEqual(followDock(box(1700, 100), dockA, dockB, -1, 1, right), box(2110 + 16, 100));
+// 같은 화면에서 옮기면 거리와 높이만 그대로 따라온다
+assert.deepEqual(followDock(box(1700, 100), dockA, { ...dockA, y: 500 }, -1, -1, { x: 0, y: 44, width: 2048, height: 1000 }), box(1700, 300));
+// 화면 밖으로 나가면 안으로 들어온다
+assert.equal(followDock(box(1700, 100), dockA, { ...dockA, y: 1100 }, -1, -1, { x: 0, y: 44, width: 2048, height: 1000 }).y, 829);
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];

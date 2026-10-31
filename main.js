@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell, globalShortcut, deskto
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, sortMemos, hits } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, reflow, snapMove, followDock, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
@@ -557,7 +557,9 @@ app.on('web-contents-created', (_e, wc) => {
 // ---- 탭 줄 ----
 let dragFrom, dragMemos;
 ipcMain.handle('dock-drag-start', () => {
-  dragMemos = memos.filter((m) => m.win.isVisible()).map((m) => ({ m, b: place(m) }));
+  // 탭 줄과 같은 화면에 있는 메모만 따라온다. 다른 화면에 일부러 둔 메모는 그대로 둔다.
+  const here = workArea(dock.getBounds()).x;
+  dragMemos = memos.filter((m) => m.win.isVisible() && workArea(place(m)).x === here).map((m) => ({ m, b: place(m) }));
   return (dragFrom = dock.getBounds());
 });
 ipcMain.handle('dock-drag', (_e, dx, dy) => {
@@ -565,12 +567,17 @@ ipcMain.handle('dock-drag', (_e, dx, dy) => {
   const p = snapToEdge(dragFrom.x + dx, dragFrom.y + dy);
   dock.setPosition(p.x, p.y);
   // 펼쳐둔 건 늘어놓은 모양 그대로 같이 따라온다
-  dragMemos.forEach(({ m, b }) => put(m, { x: b.x + p.x - dragFrom.x, y: b.y + p.y - dragFrom.y }));
+  const to = { ...dragFrom, x: p.x, y: p.y };
+  dragMemos.forEach(({ m, b }) => put(m, followDock(b, dragFrom, to, direction(dragFrom), direction(to), memoArea(to))));
 });
 ipcMain.handle('dock-drag-end', () => {
   const b = dock.getBounds();
   settings.dock = { x: b.x, y: b.y };
   updateDock(); // 화면 반대편으로 옮겼으면 북마크 파인 쪽도 뒤집어야 한다
+  // 작은 화면으로 옮기면 메모가 화면 끝에 몰려 겹칠 수 있다. 그때만 다시 늘어놓는다.
+  const boxes = (dragMemos || []).map(({ m }) => place(m));
+  if (boxes.some((a, i) => boxes.some((c, j) => i < j && hits(a, c)))) arrange();
+  saveOpen();
 });
 ipcMain.handle('dock-tab', (_e, id) => {
   const m = memos.find((x) => x.win.webContents.id === id);
