@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const fileNameFor = require('./name');
 const store = require('./store');
-const { freeSpot, stackBoxes, sortMemos } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, sortMemos } = require('./place');
 
 // ---- 제목 -> 파일명 ----
 assert.equal(fileNameFor('회의록'), '회의록.html');
@@ -146,6 +146,17 @@ assert.equal(st[1].x + st[1].width, 1400);
 assert.equal(st[2].y, 0); // 줄이 차면 맨 위로
 assert.equal(st[2].x + st[2].width, st[0].x - 4); // 좁은 메모 옆에 틈 없이 붙는다
 assert.ok(stackBoxes(sizes, wide, 0, 1, 4).every((b) => b.x >= 0));
+
+// 목록이 열리면 가리는 메모와 그 옆으로 이어지는 메모만 비킨다
+const list = { x: 700, y: 200, width: 250, height: 400 };
+const pm = [box(720, 0, 270, 190), box(720, 300), box(440, 300), box(-200, 300), box(720, 610, 270, 90)];
+const pushed = pushBoxes(pm, list, -1, 4);
+assert.deepEqual(pushed[0], pm[0]); // 위
+assert.deepEqual(pushed[4], pm[4]); // 아래
+assert.equal(pushed[1].x, 426); // 가리던 메모
+assert.equal(pushed[2].x, 152); // 밀려서 닿은 옆 메모
+assert.equal(pushed[3].x, -200); // 아직 안 닿은 메모
+assert.equal(pushBoxes([box(100, 300)], { ...list, x: 50 }, 1, 4)[0].x, 304); // 오른쪽으로 펼칠 때
 
 // 정렬
 const ms = [{ title: '다', at: 1 }, { title: '가', at: 3 }, { title: '나' }];

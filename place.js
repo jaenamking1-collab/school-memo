@@ -68,6 +68,24 @@ exports.stackBoxes = (sizes, area, edge, dir, gap) => {
   return placed;
 };
 
+// 벽(목록 창)에 가리는 메모만 dir 쪽으로 비킨다. 위아래로 비껴 있는 메모는 그대로 둔다.
+// 비킨 메모가 옆 메모에 닿으면 그 메모도 이어서 밀린다.
+exports.pushBoxes = (boxes, wall, dir, gap) => {
+  const near = (b) => (dir < 0 ? -(b.x + b.width) : b.x);
+  const order = boxes.map((_, i) => i).sort((p, q) => near(boxes[p]) - near(boxes[q]));
+  const walls = [wall];
+  const out = boxes.map((b) => ({ ...b }));
+  for (const i of order) {
+    const b = boxes[i];
+    const on = walls.filter((w) => b.y < w.y + w.height && w.y < b.y + b.height
+      && (dir < 0 ? b.x < w.x + w.width && b.x + b.width + gap > w.x : b.x + b.width > w.x && b.x - gap < w.x + w.width));
+    if (!on.length) continue;
+    out[i].x = dir < 0 ? Math.min(...on.map((w) => w.x)) - gap - b.width : Math.max(...on.map((w) => w.x + w.width)) + gap;
+    walls.push(out[i]);
+  }
+  return out;
+};
+
 // 정렬. at 이 없는 건 아직 저장 전인 새 메모라 최근순 맨 위에 둔다.
 exports.sortMemos = (list, order) =>
   [...list].sort((a, b) =>

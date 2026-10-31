@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const { freeSpot, stackBoxes, sortMemos, hits } = require('./place');
+const { freeSpot, stackBoxes, pushBoxes, sortMemos, hits } = require('./place');
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
@@ -285,19 +285,17 @@ function slide(moves) {
 
 function pushAside(list) {
   const wa = workArea(list);
-  const seen = { ...list, x: list.x + 10, width: list.width - 20 }; // 가장자리 여백은 그림자 자리다
+  const seen = { x: list.x + 10, y: list.y + 10, width: list.width - 20, height: list.height - 20 }; // 가장자리 여백은 그림자 자리다
   const shown = memos.filter((m) => m.win.isVisible() && workArea(place(m)).x === wa.x);
-  const covered = shown.map(place).filter((b) => hits(b, seen));
-  if (!covered.length) return;
-  const toLeft = listSide === 'left';
-  const by = toLeft
-    ? -(Math.max(...covered.map((b) => b.x + b.width)) - seen.x + GAP)
-    : seen.x + seen.width - Math.min(...covered.map((b) => b.x)) + GAP;
-  slide(shown.map((m) => {
-    const b = place(m);
-    m.home = b;
-    return { m, to: { ...b, x: clamp(b.x + by, wa.x, wa.x + wa.width - b.width) } };
-  }));
+  const boxes = shown.map(place);
+  const next = pushBoxes(boxes, seen, listSide === 'left' ? -1 : 1, GAP);
+  const moves = [];
+  shown.forEach((m, i) => {
+    if (next[i].x === boxes[i].x) return;
+    m.home = boxes[i];
+    moves.push({ m, to: { ...boxes[i], x: clamp(next[i].x, wa.x, wa.x + wa.width - boxes[i].width) } });
+  });
+  if (moves.length) slide(moves);
 }
 
 function comeBack(now) {
