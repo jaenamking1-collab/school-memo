@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('dock', {
   tab: call('dock-tab'),
   newMemo: call('new-memo'),
   list: call('dock-list'),
+  all: call('dock-all'),
   menu: call('dock-menu'),
   widthStart: call('dock-width-start'),
   width: call('dock-width'),

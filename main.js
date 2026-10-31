@@ -117,6 +117,22 @@ function tabbed(order = settings.order) {
 
 const dockWidth = () => settings.dockWidth || DOCK_W.base;
 
+// 전부 최소화: 그때 떠 있던 메모를 기억해 두고, 다시 누르면 그 메모만 돌려놓는다.
+// 앱을 다시 켜서 기억이 없으면 내려가 있는 메모를 전부 올린다.
+let allDown = null;
+function toggleAll() {
+  const shown = memos.filter((m) => m.win.isVisible());
+  comeBack(true);
+  if (allDown || !shown.length) {
+    (allDown || memos).filter((m) => !m.win.isDestroyed()).forEach((m) => m.win.showInactive());
+    allDown = null;
+  } else {
+    allDown = shown;
+    shown.forEach((m) => m.win.hide());
+  }
+  updateDock();
+}
+
 function dockHeight() {
   return (memos.length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
 }
@@ -145,6 +161,7 @@ function updateDock() {
     // 북마크의 파인 쪽이 화면 안쪽(벽 반대편)을 보도록
     side: p.x + dockWidth() / 2 < wa.x + wa.width / 2 ? 'left' : 'right',
     hotkey: hotkeyOn ? HOTKEY : '',
+    allDown: !!allDown || (memos.length > 0 && !memos.some((m) => m.win.isVisible())),
     // 최소화한 것도 흐리게 탭에 남는다
     tabs: tabbed()
       .map((m) => ({
@@ -608,6 +625,7 @@ ipcMain.handle('dock-width', (_e, dx) => {
 });
 ipcMain.handle('dock-width-end', updateDock);
 
+ipcMain.handle('dock-all', toggleAll);
 ipcMain.handle('dock-tab', (_e, id) => {
   const m = memos.find((x) => x.win.webContents.id === id);
   if (m) showMemo(m);

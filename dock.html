@@ -28,7 +28,12 @@
   .tab.on { font-weight: 700; }
   /* 글자는 안쪽 여백에서 잘린다. 뾰족한 끝으로 넘어가면 글자가 찢겨 보인다 */
   .tab span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  #list, #new { justify-content: center; }
+  #new { justify-content: center; }
+  /* 목록·전부 최소화가 한 줄에 나란히 */
+  .row > div { flex: 1; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .row > div:hover { background: rgba(90, 70, 0, .16); }
+  #all.on { background: #4a4012; color: #fffbe0; } /* 눌린 상태 */
+  svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   /* 폭 조절 손잡이: 안쪽 끝. 투명하면 마우스를 받지 못해 아주 옅게 칠한다 */
   #grip { position: fixed; top: 0; bottom: 0; left: 0; width: 12px; background: rgba(0, 0, 0, .01); cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24'%3E%3Cpath d='M11 3H5v18h6' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M11 3H5v18h6' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 12, ew-resize; }
   body.left #grip { left: auto; right: 0; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24'%3E%3Cpath d='M5 3h6v18H5' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M5 3h6v18H5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 12, ew-resize; }
@@ -41,7 +46,7 @@
 <script>
   const d = document.getElementById('d');
 
-  function render({ side, tabs, hotkey }) {
+  function render({ side, tabs, hotkey, allDown }) {
     document.body.classList.toggle('left', side === 'left');
     d.innerHTML = '';
     for (const t of tabs) {
@@ -55,12 +60,13 @@
       d.append(el);
     }
     // 포스트잇이 하나도 없어도 여기서 저장된 메모를 전부 볼 수 있다
-    const l = document.createElement('div');
-    l.className = 'tab';
-    l.id = 'list';
-    l.textContent = '☰';
-    l.title = '메모 목록';
-    d.append(l);
+    const row = document.createElement('div');
+    row.className = 'tab row';
+    row.innerHTML = `<div id="list" title="메모 목록">☰</div>
+      <div id="all" class="${allDown ? 'on' : ''}" title="${allDown ? '메모 다시 펼치기' : '메모 전부 최소화'}">
+        <svg viewBox="0 0 16 16"><path d="M8 2.500v7M4.800 6.500L8 9.700l3.200-3.200M3 13h10"/></svg>
+      </div>`;
+    d.append(row);
 
     const n = document.createElement('div');
     n.className = 'tab';
@@ -78,6 +84,7 @@
     if (e.button !== 0) return;
     const sx = e.screenX, sy = e.screenY;
     const from = e.target.closest('.tab');
+    const btn = e.target.closest('#list, #all, #new')?.id;
     let moved = false;
     // 커서가 창 밖으로 나가도 계속 받으려면 눌린 요소가 포인터를 잡고 있어야 한다
     try { e.target.setPointerCapture(e.pointerId); } catch {}
@@ -92,9 +99,10 @@
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
       if (moved) dock.dragEnd();
-      else if (from && from.id === 'list') dock.list();
-      else if (from && from.id === 'new') dock.newMemo();
-      else if (from) dock.tab(Number(from.dataset.id));
+      else if (btn === 'list') dock.list();
+      else if (btn === 'all') dock.all();
+      else if (btn === 'new') dock.newMemo();
+      else if (from?.dataset.id) dock.tab(Number(from.dataset.id));
     };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
