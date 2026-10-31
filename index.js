@@ -6,7 +6,15 @@ let sel = null; // 고른 사진
 
 const setColor = (hex) => {
   color = hex;
-  document.documentElement.style.setProperty('--bg', hex);
+  const root = document.documentElement.style;
+  root.setProperty('--bg', hex);
+  // 조합에 있는 색이면 짙은 짝을 제목 줄과 글자에 쓴다. 옛날 색은 예전처럼 그린다.
+  const [, , ink, text] = COLORS.find(([, paper]) => paper === hex.toLowerCase()) || [];
+  document.body.classList.toggle('dark', !!ink);
+  if (ink) {
+    root.setProperty('--ink', ink);
+    root.setProperty('--text', text || ink);
+  }
 };
 
 // ---- 저장 ----
@@ -92,20 +100,25 @@ $('b-new').onclick = async () => {
 };
 
 // ---- 창 ----
-// 색은 이름 대신 실제 색 칸으로 고른다
+// 색은 이름 대신 실제 색 칸으로 고른다. [이름, 메모 바탕, 제목 줄·글자, 본문 글자(따로 필요할 때)]
 const COLORS = [
-  ['노랑', '#fdf07a'],
-  ['분홍', '#ffc9d4'],
-  ['하늘', '#b8e2ff'],
-  ['연두', '#cdf0a7'],
-  ['보라', '#ddc9ff'],
-  ['주황', '#ffd7a0'],
+  ['노랑', '#fdf07a', null],
+  ['소프트 버터', '#fff1a6', '#6b352a'],
+  ['피치', '#ffb7a5', '#1a0b2e'],
+  ['애시드 민트', '#b7ff72', '#18251d'],
+  ['아쿠아 폼', '#8fffe0', '#03313a'],
+  ['AI 그린', '#39ff88', '#0b132b'],
+  ['페일 스카이', '#e0f2fe', '#c2185b'],
+  ['아이스 글라스', '#dff7ff', '#2457ff'],
+  ['미스트 그레이', '#f0f2f5', '#7a35ff'],
+  ['포슬린', '#fffcf4', '#ff6115', '#3a3320'], // 주황 글자는 밝은 바탕에서 읽기 어렵다
 ];
-for (const [label, hex] of COLORS) {
+for (const [label, hex, ink] of COLORS) {
   const b = document.createElement('button');
   b.title = label;
   b.setAttribute('aria-label', label);
-  b.style.background = hex;
+  b.style.background = `linear-gradient(${ink || 'rgba(90, 70, 0, .35)'} 36%, ${hex} 36%)`; // 위가 제목 줄, 아래가 바탕
+  if (!ink) b.style.backgroundColor = hex;
   b.dataset.hex = hex;
   b.onclick = () => {
     setColor(hex);

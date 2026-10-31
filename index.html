@@ -75,14 +75,25 @@
   .done { text-decoration: line-through; opacity: .6; }
   #ed ul { margin: 0; padding-left: 20px; }
 
+  /* 색 조합: 제목 줄과 글자에 짙은 짝을 쓴다 */
+  body.dark { color: var(--text); }
+  body.dark #hd { background: var(--ink); }
+  body.dark #title, body.dark #hd button { color: #fff; }
+  body.dark #hd button:hover { background: rgba(255, 255, 255, .2); }
+  body.dark #title[contenteditable='true'] { color: var(--ink); }
+  body.dark #fmt button { color: var(--ink); }
+  body.dark #fmt button.on { background: var(--ink); color: #fff; }
+  body.dark .box { border-color: var(--ink); color: #fff; }
+  body.dark .done .box { background: var(--ink); }
+
   /* 색 고르기 */
   #colors {
     position: fixed; top: 25px; right: 4px; z-index: 10;
-    display: flex; gap: 5px; padding: 6px;
+    display: grid; grid-template-columns: repeat(5, 26px); gap: 6px; padding: 7px;
     background: #fffbe0; border-radius: 7px;
     box-shadow: 0 2px 8px rgba(60, 45, 0, .4);
   }
-  #colors button { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(90, 70, 0, .3); border-radius: 5px; cursor: pointer; }
+  #colors button { width: 26px; height: 26px; padding: 0; border: 1px solid rgba(90, 70, 0, .3); border-radius: 5px; cursor: pointer; }
   #colors button:hover { transform: scale(1.12); }
   #colors button.on { box-shadow: 0 0 0 2px #fffbe0, 0 0 0 4px #4c8bf5; }
 
