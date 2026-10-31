@@ -6,8 +6,7 @@ const { freeSpot, pushBoxes, reflow, snapMove, followDock, rowBoxes, sortMemos, 
 
 // 탭 크기는 dock.html 의 CSS 와 맞춰야 한다
 const TAB_H = 30; // 탭 한 칸 높이 (탭 26 + 틈 4)
-const DOCK_MIN = 62;
-const DOCK_MAX = 140; // 이보다 긴 제목은 … 로 줄인다
+const DOCK_W = { min: 62, base: 94, max: 260 }; // 탭 줄 폭. 안쪽 끝을 끌어 바꾼다. 긴 제목은 … 로 줄인다
 const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
@@ -116,11 +115,7 @@ function tabbed(order = settings.order) {
   return sortMemos(rows, order).map((x) => x.m);
 }
 
-// 탭 폭은 가장 긴 제목에 맞춘다. 28: 뾰족한 끝과 그림자 자리
-const textWidth = (t) => [...t].reduce((n, c) => n + (c.charCodeAt(0) > 0x2e80 ? 13 : 7.5), 0);
-// 막 여는 중인 메모는 제목이 아직 없으니 파일 이름으로 잰다. 안 그러면 폭이 잠깐 튀어 옆 메모를 민다.
-const tabText = (m) => m.title || (m.name || '').replace(/\.html$/i, '') || '제목 없음';
-const dockWidth = () => clamp(Math.max(0, ...memos.map((m) => textWidth(tabText(m)))) + 28, DOCK_MIN, DOCK_MAX);
+const dockWidth = () => settings.dockWidth || DOCK_W.base;
 
 function dockHeight() {
   return (memos.length + 2) * TAB_H + PAD * 2 - 4; // 아래 ☰·+ 두 칸 포함, 마지막 틈은 뺀다
@@ -145,7 +140,6 @@ function updateDock() {
   const b = dock.getBounds();
   const p = snapToEdge(b.x, b.y); // 탭이 늘면 화면 밖으로 나가지 않게 다시 맞춘다
   dock.setBounds({ x: p.x, y: p.y, width: dockWidth(), height: dockHeight() });
-  if (dockWidth() > b.width) clearOfDock();
   const wa = workArea(p); // 옆 모니터로 옮겼으면 그 모니터 기준으로 다시 본다
   dock.webContents.send('tabs', {
     // 북마크의 파인 쪽이 화면 안쪽(벽 반대편)을 보도록
@@ -169,7 +163,7 @@ function updateDock() {
 const place = (m) => ({ ...m.win.getBounds(), ...m.size });
 const put = (m, { x, y }) => m.win.setBounds({ x, y, ...m.size });
 
-// 제목이 길어져 탭 줄이 넓어지면 바로 옆 메모를 덮는다. 덮인 메모만 비킨다.
+// 탭 줄을 넓히면 바로 옆 메모를 덮는다. 덮인 메모만 비킨다.
 function clearOfDock() {
   const d = dock.getBounds();
   const wa = workArea(d);
@@ -601,6 +595,19 @@ ipcMain.handle('dock-drag-end', () => {
   if (boxes.some((a, i) => boxes.some((c, j) => i < j && hits(a, c)))) arrange();
   saveOpen();
 });
+// 탭 줄 폭 조절. 벽 쪽 끝은 그대로 두고 안쪽 끝만 움직인다.
+let widthFrom;
+ipcMain.handle('dock-width-start', () => { widthFrom = dock.getBounds(); });
+ipcMain.handle('dock-width', (_e, dx) => {
+  if (!widthFrom) return;
+  const f = widthFrom, onLeft = direction(f) > 0;
+  const width = clamp(f.width + (onLeft ? dx : -dx), DOCK_W.min, DOCK_W.max);
+  settings.dockWidth = width;
+  dock.setBounds({ x: onLeft ? f.x : f.x + f.width - width, y: f.y, width, height: dockHeight() });
+  clearOfDock();
+});
+ipcMain.handle('dock-width-end', updateDock);
+
 ipcMain.handle('dock-tab', (_e, id) => {
   const m = memos.find((x) => x.win.webContents.id === id);
   if (m) showMemo(m);

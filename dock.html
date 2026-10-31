@@ -29,10 +29,14 @@
   /* 글자는 안쪽 여백에서 잘린다. 뾰족한 끝으로 넘어가면 글자가 찢겨 보인다 */
   .tab span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #list, #new { justify-content: center; }
+  /* 폭 조절 손잡이: 안쪽 끝. 투명하면 마우스를 받지 못해 아주 옅게 칠한다 */
+  #grip { position: fixed; top: 0; bottom: 0; left: 0; width: 12px; background: rgba(0, 0, 0, .01); cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24'%3E%3Cpath d='M11 3H5v18h6' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M11 3H5v18h6' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 12, ew-resize; }
+  body.left #grip { left: auto; right: 0; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24'%3E%3Cpath d='M5 3h6v18H5' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M5 3h6v18H5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") 8 12, ew-resize; }
   #new { font-size: 15px; color: #6b5f2a; }
 </style>
 
 <div id="d"></div>
+<div id="grip" title="끌어서 폭 조절"></div>
 
 <script>
   const d = document.getElementById('d');
@@ -99,6 +103,23 @@
   });
 
   d.addEventListener('contextmenu', () => dock.menu());
+
+  // 안쪽 끝을 끌면 폭이 바뀐다. 창이 움직여도 놓치지 않게 화면 좌표로 잰다.
+  const grip = document.getElementById('grip');
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const sx = e.screenX;
+    grip.setPointerCapture(e.pointerId);
+    dock.widthStart();
+    const move = (ev) => dock.width(ev.screenX - sx);
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      dock.widthEnd();
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
 
   // 탭에 마우스를 잠깐 올리면 그 메모가 뜬다. 스치기만 해서는 안 뜬다.
   let over, wait;
