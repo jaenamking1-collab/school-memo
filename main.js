@@ -10,6 +10,7 @@ const DOCK_W = 62;
 const PAD = 5;
 const GAP = 4; // 탭·포스트잇 사이 틈
 const SNAP = 30; // 이만큼 가까우면 화면 끝에 자석처럼 붙는다
+const TOP = 44; // 화면 맨 위 이만큼은 비워 둔다 (최대화한 브라우저의 탭 줄)
 const LIST = { width: 270, height: 480 }; // 메모 목록 창 (그림자 여백 포함)
 const SIZE = { width: 270, height: 215 }; // 기본 포스트잇 (가로로 누운 직사각형)
 
@@ -55,6 +56,12 @@ const clamp = (v, lo, hi) => Math.round(Math.min(Math.max(v, lo), hi));
 // getDisplayMatching 은 width/height 가 없으면 던진다. 점만 줘도 되게 채워준다.
 const workArea = (b) =>
   require('electron').screen.getDisplayMatching({ width: 1, height: 1, ...b }).workArea;
+
+// 포스트잇을 자동으로 놓는 범위. 사용자가 직접 끌어 옮기는 건 막지 않는다.
+const memoArea = (b) => {
+  const wa = workArea(b);
+  return { ...wa, y: wa.y + TOP, height: wa.height - TOP };
+};
 
 let dock; // 화면 끝에 붙는 제목 탭 줄
 let memos = []; // [{ win, name, title }] 띄워둔 포스트잇들
@@ -154,7 +161,7 @@ function dockAnchor(width) {
 
 function placeNear(m, from) {
   const others = [dock, ...memos.filter((x) => x !== m && x.win.isVisible()).map((x) => x.win)].map((w) => w.getBounds());
-  put(m, freeSpot(from, { ...m.size, gap: GAP }, workArea(from), others, direction(from)));
+  put(m, freeSpot(from, { ...m.size, gap: GAP }, memoArea(from), others, direction(from)));
 }
 
 // 새 메모의 기준: 가장 나중에 쓴 포스트잇 (focus 때 memos 맨 뒤로 온다)
@@ -183,7 +190,7 @@ function createMemo(openName, opts = {}) {
   win.loadFile('index.html', { query: openName ? { open: openName } : {} });
   win.once('ready-to-show', () => {
     if (opts.bounds) {
-      const b = opts.bounds, wa = workArea(b); // 모니터를 뺐으면 남은 화면 안으로 들어온다
+      const b = opts.bounds, wa = memoArea(b); // 모니터를 뺐으면 남은 화면 안으로 들어온다
       m.size = { width: b.width, height: b.height };
       put(m, { x: clamp(b.x, wa.x, wa.x + wa.width - b.width), y: clamp(b.y, wa.y, wa.y + wa.height - b.height) });
     } else placeNear(m, opts.from || anchorFor(m));
@@ -245,7 +252,7 @@ function arrange() {
   const dir = direction(d);
   const shown = tabbed().filter((x) => x.win.isVisible());
   const edge = dir < 0 ? d.x - GAP : d.x + d.width + GAP;
-  const boxes = stackBoxes(shown.map((m) => m.size), workArea(d), edge, dir, GAP);
+  const boxes = stackBoxes(shown.map((m) => m.size), memoArea(d), edge, dir, GAP);
   shown.forEach((m, i) => put(m, boxes[i]));
   saveOpen();
 }
